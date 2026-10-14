@@ -1,14 +1,19 @@
-# Quickshell Scratchpad
+# Quickshell Scratchpads
 
-A single, persistent plain text scratchpad for pasted thread output and custom notes.
+Persistent scratchpads for pasted thread output and custom notes. Use **+ New**
+to create a scratchpad, select one in the sidebar, and edit its name above the editor.
 
 Run `./toggle`, or press **Super+N** on this machine. Press the hotkey again,
 Escape, or the close button to hide it. Edits autosave after 300 ms and on hide.
-The window floats on the right at 25% monitor width and 75% monitor height.
+The window floats on the right at 25% monitor width and 75% monitor height,
+with 32 logical pixels of space on the right and 48 below it.
 
-Notes live outside Git at `~/.local/share/quickshell-scratchpad/scratchpad.txt`
-(or under `$XDG_DATA_HOME`). Requires Quickshell, Qt Quick Controls, and flock.
+Notes live outside Git at `~/.local/share/quickshell-scratchpad/scratchpads.json`
+(or under `$XDG_DATA_HOME`). The original `scratchpad.txt` is imported into the
+first scratchpad on first launch and kept as a backup. The active scratchpad is
+restored on launch. Requires Quickshell, Qt Quick Controls, Python 3, and flock.
 
 The installed Omarchy binding is in `~/.config/hypr/bindings.lua`; the window
-rule is in `~/.config/hypr/hyprland.lua`. T3 integration and multiple notes are
-future work; for now copy and paste into the editor.
+rule is in `~/.config/hypr/hyprland.lua`. The installed settings are also recorded
+in `omarchy.lua` for reference; avoid sourcing it alongside the existing settings.
+T3 integration is future work; for now copy and paste into the editor.
