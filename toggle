@@ -19,7 +19,44 @@ with open(path, "x", opener=lambda name, flags: os.open(name, flags, 0o600)) as 
 PYTHON
 fi
 
-if quickshell ipc -p "$repo_dir" call scratchpad toggle >/dev/null 2>&1; then
+# Decide using the compositor workspace, rather than QML visibility (which
+# remains true even when the window is on another workspace).
+workspace=$(hyprctl -j activeworkspace | jq -r '.name')
+workspace_lua=$(jq -Rn --arg workspace "$workspace" '$workspace')
+find_window() {
+    hyprctl -j clients | jq -r '.[] | select(.class == "org.quickshell" and .title == "Scratchpad" and .mapped) | [.address, .workspace.name] | @tsv' | head -n 1
+}
+IFS=$'\t' read -r address window_workspace < <(find_window) || true
+if [[ -n "${address:-}" && "$window_workspace" == "$workspace" ]]; then
+    quickshell ipc -p "$repo_dir" call scratchpad conceal
     exit 0
 fi
-quickshell -p "$repo_dir" --no-duplicate --daemonize 9>&-
+
+if ! quickshell ipc -p "$repo_dir" call scratchpad reveal >/dev/null 2>&1; then
+    quickshell -p "$repo_dir" --no-duplicate --daemonize 9>&-
+    ready=false
+    for ((attempt = 0; attempt < 50; attempt++)); do
+        if quickshell ipc -p "$repo_dir" call scratchpad reveal >/dev/null 2>&1; then
+            ready=true
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ "$ready" != true ]]; then
+        echo "Scratchpad IPC did not become ready" >&2
+        exit 1
+    fi
+fi
+
+# Mapping is asynchronous. Wait for the window before moving and focusing it.
+for ((attempt = 0; attempt < 50; attempt++)); do
+    IFS=$'\t' read -r address window_workspace < <(find_window) || true
+    if [[ -n "${address:-}" ]]; then
+        hyprctl dispatch "hl.dsp.window.move({workspace = $workspace_lua, window = \"address:$address\", follow = false})" >/dev/null
+        hyprctl dispatch "hl.dsp.focus({window = \"address:$address\"})" >/dev/null
+        exit 0
+    fi
+    sleep 0.1
+done
+echo "Scratchpad window did not map" >&2
+exit 1

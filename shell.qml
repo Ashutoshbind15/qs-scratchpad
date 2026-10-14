@@ -12,6 +12,7 @@ Scope {
     property var pads: []
     property int activeIndex: 0
     property bool switching: false
+    property bool sidebarVisible: true
 
     function save() {
         if (!ready || switching) return;
@@ -78,15 +79,19 @@ Scope {
 
     IpcHandler {
         target: "scratchpad"
-        function toggle(): void {
+        function reveal(): void {
+            window.visible = true;
+            editor.forceActiveFocus();
+        }
+        function conceal(): void {
             root.save();
-            window.visible = !window.visible;
-            if (window.visible) editor.forceActiveFocus();
+            window.visible = false;
         }
     }
 
     FloatingWindow {
         id: window
+        visible: false
         title: "Scratchpad"
         color: "#181c24"
         implicitWidth: 384
@@ -94,6 +99,22 @@ Scope {
         onVisibleChanged: {
             if (!visible) root.save();
             else editor.forceActiveFocus();
+        }
+
+        Shortcut {
+            sequence: "Ctrl+N"
+            context: Qt.WindowShortcut
+            enabled: root.ready
+            onActivated: root.newPad()
+        }
+
+        Shortcut {
+            sequence: "Ctrl+B"
+            context: Qt.WindowShortcut
+            onActivated: {
+                root.sidebarVisible = !root.sidebarVisible;
+                editor.forceActiveFocus();
+            }
         }
 
         ColumnLayout {
@@ -124,6 +145,7 @@ Scope {
                 Layout.fillHeight: true
                 spacing: 10
                 Rectangle {
+                    visible: root.sidebarVisible
                     Layout.preferredWidth: 105
                     Layout.fillHeight: true
                     color: "#202631"
@@ -202,7 +224,7 @@ Scope {
                 }
             }
             Label {
-                text: root.status + "  ·  Super+N toggles"
+                text: root.status + "  ·  Super+N toggles  ·  Ctrl+B sidebar  ·  Ctrl+N new"
                 color: "#929baa"
                 font.pixelSize: 11
             }
