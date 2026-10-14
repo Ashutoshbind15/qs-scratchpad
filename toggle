@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export SCRATCHPAD_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/quickshell-scratchpad/scratchpad.txt"
+mkdir -p -- "$(dirname -- "$SCRATCHPAD_FILE")"
+chmod 700 -- "$(dirname -- "$SCRATCHPAD_FILE")"
+if [[ ! -e "$SCRATCHPAD_FILE" ]]; then
+    (umask 077; touch -- "$SCRATCHPAD_FILE")
+fi
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/quickshell-scratchpad-${UID}.lock"
+flock 9
+if quickshell ipc -p "$repo_dir" call scratchpad toggle >/dev/null 2>&1; then
+    exit 0
+fi
+quickshell -p "$repo_dir" --no-duplicate --daemonize 9>&-
