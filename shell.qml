@@ -13,8 +13,22 @@ Scope {
     property int activeIndex: 0
     property bool switching: false
     property bool sidebarVisible: true
+    property bool previewMode: false
     property bool clearArmed: false
     property int titleFocusGeneration: 0
+
+    function focusContent() {
+        if (previewMode)
+            preview.forceActiveFocus();
+        else
+            editor.forceActiveFocus();
+    }
+
+    function togglePreview() {
+        if (!ready || activeIndex < 0) return;
+        previewMode = !previewMode;
+        focusContent();
+    }
 
     // Only the first line is scanned, so long notes stay cheap per keystroke.
     function noteTitle(text) {
@@ -48,7 +62,7 @@ Scope {
         if (selectTitle)
             focusTitle(generation);
         else
-            editor.forceActiveFocus();
+            focusContent();
     }
 
     // Selecting in the same turn as a text assignment gets cleared when the
@@ -130,6 +144,7 @@ Scope {
 
     function newPad() {
         if (!ready || switching) return;
+        previewMode = false;
         clearArmed = false;
         if (activeIndex >= 0 && activeIndex < pads.count && isBlank(editor.text)) {
             pads.remove(activeIndex);
@@ -301,7 +316,7 @@ Scope {
         target: "scratchpad"
         function reveal(): void {
             window.visible = true;
-            editor.forceActiveFocus();
+            root.focusContent();
         }
     }
 
@@ -318,7 +333,7 @@ Scope {
             if (!visible) {
                 root.pruneActiveIfBlank();
                 root.save();
-            } else editor.forceActiveFocus();
+            } else root.focusContent();
         }
 
         Shortcut {
@@ -340,8 +355,15 @@ Scope {
             context: Qt.WindowShortcut
             onActivated: {
                 root.sidebarVisible = !root.sidebarVisible;
-                editor.forceActiveFocus();
+                root.focusContent();
             }
+        }
+
+        Shortcut {
+            sequence: "Ctrl+Shift+M"
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0
+            onActivated: root.togglePreview()
         }
 
         Shortcut {
@@ -501,33 +523,61 @@ Scope {
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    ScrollView {
+                    Button {
+                        id: previewButton
+                        Layout.alignment: Qt.AlignRight
+                        enabled: root.ready && root.activeIndex >= 0
+                        text: root.previewMode ? "Edit" : "Preview"
+                        onClicked: root.togglePreview()
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Toggle Markdown preview (Ctrl+Shift+M)"
+                        contentItem: Text {
+                            text: previewButton.text
+                            color: "#eef0f6"
+                            font.pixelSize: 12
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            color: previewButton.hovered ? "#445b85" : "#2a3344"
+                            radius: 5
+                        }
+                    }
+                    StackLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        clip: true
-                        TextArea {
-                            id: editor
-                            enabled: root.ready && root.activeIndex >= 0
-                            focus: true
-                            color: "#eef0f6"
-                            selectionColor: "#445b85"
-                            placeholderTextColor: "#929baa"
-                            placeholderText: root.activeIndex < 0
-                                    ? "Ctrl+N for a new note"
-                                    : "Paste thread output or write a note…"
-                            textFormat: TextEdit.PlainText
-                            wrapMode: TextEdit.Wrap
-                            selectByMouse: true
-                            font.pixelSize: 15
-                            background: Rectangle { color: "#202631"; radius: 8 }
-                            onTextChanged: {
-                                if (root.ready && !root.switching && root.activeIndex >= 0) {
-                                    const title = root.noteTitle(text);
-                                    if (pads.get(root.activeIndex).name !== title)
-                                        pads.setProperty(root.activeIndex, "name", title);
-                                    debounce.restart();
+                        currentIndex: root.previewMode ? 1 : 0
+                        ScrollView {
+                            clip: true
+                            TextArea {
+                                id: editor
+                                enabled: root.ready && root.activeIndex >= 0
+                                focus: true
+                                color: "#eef0f6"
+                                selectionColor: "#445b85"
+                                placeholderTextColor: "#929baa"
+                                placeholderText: root.activeIndex < 0
+                                        ? "Ctrl+N for a new note"
+                                        : "Paste thread output or write a note…"
+                                textFormat: TextEdit.PlainText
+                                wrapMode: TextEdit.Wrap
+                                selectByMouse: true
+                                font.pixelSize: 15
+                                background: Rectangle { color: "#202631"; radius: 8 }
+                                onTextChanged: {
+                                    if (root.ready && !root.switching && root.activeIndex >= 0) {
+                                        const title = root.noteTitle(text);
+                                        if (pads.get(root.activeIndex).name !== title)
+                                            pads.setProperty(root.activeIndex, "name", title);
+                                        debounce.restart();
+                                    }
                                 }
                             }
+                        }
+                        MarkdownPreview {
+                            id: preview
+                            // Keep the plain-text editor as the source of truth.
+                            markdown: root.previewMode ? editor.text : ""
                         }
                     }
                 }

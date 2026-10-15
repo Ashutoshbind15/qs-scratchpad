@@ -12,6 +12,15 @@ Right-click a note in the sidebar to pin it or delete it. Pinned notes stay at
 the top, marked with a dot. **Clear all** at the bottom of the sidebar removes
 every note, including pinned ones; click it again to confirm.
 
+Click **Preview** or press **Ctrl+Shift+M** to view the current note as Markdown;
+click **Edit** or use the same shortcut to return to the source. The preview
+supports headings, lists, links, quotes, fenced code, tables, and task lists
+using Qt's built-in Markdown renderer, with no additional dependencies. Preview
+text can be selected and copied, and links open in your default application.
+Fenced code blocks have a separate dark panel, a language label, and a **Copy**
+button. Long code lines scroll horizontally while keeping their indentation.
+Notes are always saved as the original Markdown. New notes open in edit mode.
+
 Press **Super+N** (or run `./toggle`) to show it; press it again, or Escape, to hide it.
 If it is open on another workspace, Super+N brings it to your current workspace
 and focuses the editor. Edits autosave after 300 ms and on Escape.
