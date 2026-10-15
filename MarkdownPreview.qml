@@ -2,27 +2,29 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import "MarkdownBlocks.js" as MarkdownBlocks
+import "SyntaxHighlight.js" as SyntaxHighlight
 
 ScrollView {
     id: view
+    required property var colors
     property string markdown: ""
     readonly property var blocks: MarkdownBlocks.parse(markdown)
     clip: true
     contentWidth: availableWidth
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
     onMarkdownChanged: contentItem.contentY = 0
-    background: Rectangle { color: "#202631"; radius: 8 }
+    background: Rectangle { color: view.colors.surface; radius: 0 }
 
     Column {
         width: view.availableWidth
-        padding: 12
-        spacing: 12
+        padding: 4
+        spacing: 6
         Repeater {
             model: view.blocks
             delegate: Column {
                 id: block
                 required property var modelData
-                width: parent.width - 24
+                width: parent.width - 8
                 TextArea {
                     visible: !block.modelData.code
                     width: parent.width
@@ -32,8 +34,9 @@ ScrollView {
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
-                    color: "#eef0f6"
-                    selectionColor: "#445b85"
+                    color: view.colors.foreground
+                    selectionColor: view.colors.selection
+                    selectedTextColor: view.colors.foreground
                     font.pixelSize: 15
                     padding: 0
                     background: null
@@ -43,9 +46,9 @@ ScrollView {
                     visible: block.modelData.code
                     width: parent.width
                     height: visible ? codeColumn.implicitHeight + 2 : 0
-                    color: "#141922"
-                    radius: 6
-                    border.color: "#343d4d"
+                    color: view.colors.codeBackground
+                    radius: 0
+                    border.color: view.colors.border
                     Column {
                         id: codeColumn
                         x: 1
@@ -53,13 +56,13 @@ ScrollView {
                         width: parent.width - 2
                         Item {
                             width: parent.width
-                            height: 32
+                            height: 26
                             Text {
                                 anchors.left: parent.left
-                                anchors.leftMargin: 10
+                                anchors.leftMargin: 6
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: block.modelData.language
-                                color: "#9aa9be"
+                                color: view.colors.muted
                                 font.pixelSize: 11
                                 elide: Text.ElideRight
                                 width: Math.max(0, parent.width - copyButton.width - 24)
@@ -79,18 +82,18 @@ ScrollView {
                                 Timer { id: copied; interval: 1500 }
                                 contentItem: Text {
                                     text: copyButton.text
-                                    color: copyButton.hovered ? "#eef0f6" : "#9aa9be"
+                                    color: copyButton.hovered ? view.colors.foreground : view.colors.muted
                                     font.pixelSize: 11
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: copyButton.hovered ? "#2a3344" : "transparent"
-                                    radius: 4
+                                    color: copyButton.hovered ? view.colors.hover : "transparent"
+                                    radius: 0
                                 }
                             }
                         }
-                        Rectangle { width: parent.width; height: 1; color: "#343d4d" }
+                        Rectangle { width: parent.width; height: 1; color: view.colors.border }
                         ScrollView {
                             id: codeScroll
                             width: parent.width
@@ -103,16 +106,18 @@ ScrollView {
                             TextArea {
                                 id: codeText
                                 objectName: "codeText"
-                                text: block.modelData.code ? block.modelData.text : ""
-                                textFormat: TextEdit.PlainText
+                                text: block.modelData.code
+                                      ? SyntaxHighlight.highlight(block.modelData.text, block.modelData.language, view.colors.syntax) : ""
+                                textFormat: TextEdit.RichText
                                 readOnly: true
                                 selectByMouse: true
                                 wrapMode: TextEdit.NoWrap
                                 font.family: "monospace"
                                 font.pixelSize: 13
-                                color: "#d5dfee"
-                                selectionColor: "#445b85"
-                                padding: 10
+                                color: view.colors.foreground
+                                selectionColor: view.colors.selection
+                                selectedTextColor: view.colors.foreground
+                                padding: 6
                                 background: null
                             }
                         }
