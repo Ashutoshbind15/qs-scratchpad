@@ -2,33 +2,41 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 
 Scope {
     id: root
     property bool ready: false
-    property string status: "Loading…"
+    property string errorMessage: ""
 
-    property var pads: []
     property int activeIndex: 0
     property bool switching: false
     property bool sidebarVisible: true
 
+    // Only the first line is scanned, so long notes stay cheap per keystroke.
+    function noteTitle(text) {
+        const end = text.indexOf("\n");
+        return (end < 0 ? text : text.slice(0, end)).trim() || "Untitled";
+    }
+
     function save() {
         if (!ready || switching) return;
         debounce.stop();
-        pads[activeIndex].text = editor.text;
-        pads[activeIndex].name = titleField.text.trim() || "Untitled";
-        pads = pads.slice();
-        notes.setText(JSON.stringify({ version: 1, activeIndex: activeIndex, pads: pads }, null, 2));
+        pads.setProperty(activeIndex, "text", editor.text);
+        const data = [];
+        for (let i = 0; i < pads.count; i++) {
+            const pad = pads.get(i);
+            data.push({ name: pad.name, text: pad.text });
+        }
+        notes.setText(JSON.stringify({ version: 1, activeIndex: activeIndex, pads: data }, null, 2));
     }
 
     function selectPad(index) {
-        save();
+        pads.setProperty(activeIndex, "text", editor.text);
         switching = true;
         activeIndex = index;
-        editor.text = pads[index].text;
-        titleField.text = pads[index].name;
+        editor.text = pads.get(index).text;
         switching = false;
         save();
         editor.forceActiveFocus();
@@ -36,18 +44,18 @@ Scope {
 
     function newPad() {
         if (!ready) return;
-        save();
-        pads = pads.concat([{ name: "Scratchpad " + (pads.length + 1), text: "" }]);
-        selectPad(pads.length - 1);
-        titleField.forceActiveFocus();
-        titleField.selectAll();
+        pads.append({ name: "Untitled", text: "" });
+        selectPad(pads.count - 1);
     }
+
+    // The sidebar model. Titles are updated in place so typing never rebuilds
+    // the list's delegates.
+    ListModel { id: pads }
 
     FileView {
         id: notes
         path: Quickshell.env("SCRATCHPAD_FILE")
         blockLoading: true
-        blockWrites: true
         atomicWrites: true
         onLoaded: {
             try {
@@ -55,20 +63,20 @@ Scope {
                 if (data.version !== 1 || !Array.isArray(data.pads) || !data.pads.length
                     || data.pads.some(p => typeof p.name !== "string" || typeof p.text !== "string"))
                     throw new Error("Invalid scratchpad data");
-                root.pads = data.pads;
+                pads.clear();
+                for (const p of data.pads) pads.append({ name: root.noteTitle(p.text), text: p.text });
                 root.activeIndex = Number.isInteger(data.activeIndex)
                     && data.activeIndex >= 0 && data.activeIndex < data.pads.length ? data.activeIndex : 0;
-                editor.text = root.pads[root.activeIndex].text;
-                titleField.text = root.pads[root.activeIndex].name;
+                editor.text = pads.get(root.activeIndex).text;
                 root.ready = true;
-                root.status = "Saved locally";
+                root.errorMessage = "";
             } catch (error) {
-                root.status = "Unable to load notes — " + error.message;
+                root.errorMessage = "Unable to load notes — " + error.message;
             }
         }
-        onLoadFailed: { root.status = "Unable to load notes"; }
-        onSaved: root.status = "Saved locally"
-        onSaveFailed: root.status = "Save failed — keep this window open"
+        onLoadFailed: { root.errorMessage = "Unable to load notes"; }
+        onSaved: root.errorMessage = ""
+        onSaveFailed: root.errorMessage = "Save failed — keep this window open"
     }
 
     Timer {
@@ -77,21 +85,20 @@ Scope {
         onTriggered: root.save()
     }
 
+    // Used by `toggle start` to re-create the window if it was closed.
     IpcHandler {
         target: "scratchpad"
         function reveal(): void {
             window.visible = true;
             editor.forceActiveFocus();
         }
-        function conceal(): void {
-            root.save();
-            window.visible = false;
-        }
     }
 
+    // Stays mapped for the instance's lifetime; Hyprland hides it by parking
+    // it on a special workspace (see omarchy.lua).
     FloatingWindow {
         id: window
-        visible: false
+        visible: true
         title: "Scratchpad"
         color: "#181c24"
         implicitWidth: 384
@@ -123,25 +130,6 @@ Scope {
             spacing: 12
             RowLayout {
                 Layout.fillWidth: true
-                Label {
-                    text: "Scratchpads"
-                    color: "#eef0f6"
-                    font.pixelSize: 19
-                    font.bold: true
-                    Layout.fillWidth: true
-                }
-                ToolButton {
-                    text: "+ New"
-                    enabled: root.ready
-                    onClicked: root.newPad()
-                }
-                ToolButton {
-                    text: "×"
-                    onClicked: { root.save(); window.visible = false; }
-                }
-            }
-            RowLayout {
-                Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 10
                 Rectangle {
@@ -155,14 +143,14 @@ Scope {
                         anchors.margins: 5
                         clip: true
                         spacing: 4
-                        model: root.pads
+                        model: pads
                         delegate: ItemDelegate {
-                            required property var modelData
+                            required property string name
                             required property int index
                             width: ListView.view.width
                             highlighted: index === root.activeIndex
                             contentItem: Text {
-                                text: modelData.name
+                                text: name
                                 color: "#eef0f6"
                                 elide: Text.ElideRight
                                 font.pixelSize: 12
@@ -174,7 +162,7 @@ Scope {
                             }
                             onClicked: root.selectPad(index)
                             ToolTip.visible: hovered
-                            ToolTip.text: modelData.name
+                            ToolTip.text: name
                         }
                         ScrollBar.vertical: ScrollBar {}
                     }
@@ -182,20 +170,7 @@ Scope {
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    TextField {
-                        id: titleField
-                        Layout.fillWidth: true
-                        enabled: root.ready
-                        color: "#eef0f6"
-                        placeholderText: "Scratchpad name"
-                        background: Rectangle { color: "#202631"; radius: 6 }
-                        onTextEdited: {
-                            root.status = "Saving…";
-                            debounce.restart();
-                        }
-                        Keys.onEscapePressed: { root.save(); window.visible = false; }
-                    }
-                ScrollView {
+                    ScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
@@ -214,17 +189,23 @@ Scope {
                             background: Rectangle { color: "#202631"; radius: 8 }
                             onTextChanged: {
                                 if (root.ready && !root.switching) {
-                                    root.status = "Saving…";
+                                    const title = root.noteTitle(text);
+                                    if (pads.get(root.activeIndex).name !== title)
+                                        pads.setProperty(root.activeIndex, "name", title);
                                     debounce.restart();
                                 }
                             }
-                            Keys.onEscapePressed: { root.save(); window.visible = false; }
+                            Keys.onEscapePressed: {
+                                root.save();
+                                Hyprland.dispatch("quickshell_scratchpad_toggle");
+                            }
                         }
                     }
                 }
             }
             Label {
-                text: root.status + "  ·  Super+N toggles  ·  Ctrl+B sidebar  ·  Ctrl+N new"
+                visible: root.errorMessage.length > 0
+                text: root.errorMessage
                 color: "#929baa"
                 font.pixelSize: 11
             }
