@@ -18,6 +18,9 @@ Scope {
     property bool sidebarVisible: true
     property bool previewMode: false
     property bool clearArmed: false
+    property bool clearPointsArmed: false
+    property var pendingCaptures: []
+    property bool activeGlobal: activeIndex >= 0 && pads.count > activeIndex && pads.get(activeIndex).global
     property int titleFocusGeneration: 0
 
     property string activeTitle: ""
@@ -33,7 +36,7 @@ Scope {
     function activeText() { return activeTitle.trim() + "\n" + Points.combined(pointTexts()); }
 
     function updateTitle(text) {
-        if (switching || !ready || activeIndex < 0) return;
+        if (switching || !ready || activeIndex < 0 || activeGlobal) return;
         activeTitle = text;
         pads.setProperty(activeIndex, "name", text.trim() || "Untitled");
         debounce.restart();
@@ -68,6 +71,48 @@ Scope {
         previewMode = false;
         points.append({ body: "" });
         activePoint = points.count - 1;
+        save();
+        Qt.callLater(focusContent);
+    }
+
+    function globalIndex() {
+        for (let i = 0; i < pads.count; i++) if (pads.get(i).global) return i;
+        return -1;
+    }
+
+    function captureGlobal(text = "") {
+        if (!ready) { pendingCaptures.push(text); return; }
+        selectPad(globalIndex());
+        sidebarVisible = true;
+        previewMode = false;
+        clearPointsArmed = false;
+        // Reuse an empty last point so repeated presses do not pile up blanks.
+        if (points.count && isBlank(points.get(points.count - 1).body)) {
+            activePoint = points.count - 1;
+            Qt.callLater(focusContent);
+        } else addPoint();
+        if (text.length) {
+            updatePoint(activePoint, text);
+            save();
+            Qt.callLater(function() {
+                focusContent();
+                if (editor) editor.cursorPosition = editor.length;
+            });
+        }
+    }
+
+    function armClearPoints() {
+        if (!clearPointsArmed) {
+            clearPointsArmed = true;
+            clearPointsArm.restart();
+            return;
+        }
+        clearPointsArmed = false;
+        previewMode = false;
+        points.clear();
+        points.append({ body: "" });
+        activePoint = 0;
+        copied.stop();
         save();
         Qt.callLater(focusContent);
     }
@@ -116,6 +161,7 @@ Scope {
     // does not rebuild the rows. selectTitle highlights the title field so a
     // new note's name can be replaced immediately.
     function showEditor(index, selectTitle) {
+        clearPointsArmed = false;
         const generation = ++titleFocusGeneration;
         switching = true;
         activeIndex = index;
@@ -152,7 +198,7 @@ Scope {
             const pad = pads.get(i);
             if (isBlank(pad.text) && isBlank(pad.name)) continue;
             if (i === activeIndex) storedActive = data.length;
-            data.push({ name: pad.name, points: JSON.parse(pad.pointsJson), pinned: !!pad.pinned });
+            data.push({ name: pad.name, points: JSON.parse(pad.pointsJson), pinned: !!pad.pinned, global: !!pad.global });
         }
         notes.setText(JSON.stringify({
             version: 3,
@@ -204,13 +250,14 @@ Scope {
             commitActive();
         }
         const title = nextUntitled();
-        pads.append({ name: title, text: "", pointsJson: JSON.stringify([""]), pinned: false });
+        pads.append({ name: title, text: "", pointsJson: JSON.stringify([""]), pinned: false, global: false });
         showEditor(pads.count - 1, true);
     }
 
     function removePad(index) {
         if (!ready || index < 0 || index >= pads.count) return;
         clearArmed = false;
+        if (pads.get(index).global) return;
         const removingActive = index === activeIndex;
         if (!removingActive)
             commitActive();
@@ -233,6 +280,7 @@ Scope {
     function togglePin(index) {
         if (!ready || index < 0 || index >= pads.count) return;
         clearArmed = false;
+        if (pads.get(index).global) return;
         commitActive();
         pads.setProperty(index, "pinned", !pads.get(index).pinned);
         let otherPinned = 0;
@@ -244,7 +292,7 @@ Scope {
             return;
         }
         const pad = pads.get(index);
-        const entry = { name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: !!pad.pinned };
+        const entry = { name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: !!pad.pinned, global: !!pad.global };
         pads.remove(index);
         let active = activeIndex === index ? -1 : activeIndex;
         if (active > index) active--;
@@ -287,8 +335,9 @@ Scope {
         activeTitle = "";
         points.clear();
         copied.stop();
+        pads.append({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true });
         switching = false;
-        save();
+        showEditor(0);
     }
 
     function hideScratchpad() {
@@ -314,33 +363,39 @@ Scope {
                 const data = JSON.parse(text());
                 if ((data.version !== 1 && data.version !== 2 && data.version !== 3) || !Array.isArray(data.pads))
                     throw new Error("Invalid scratchpad data");
+                const globals = [];
                 const pinned = [];
                 const rest = [];
                 const activeSource = Number.isInteger(data.activeIndex) ? data.activeIndex : -1;
                 for (let i = 0; i < data.pads.length; i++) {
                     const p = data.pads[i];
                     if (typeof p.name !== "string"
-                            || (p.pinned !== undefined && typeof p.pinned !== "boolean"))
+                            || (p.pinned !== undefined && typeof p.pinned !== "boolean")
+                            || (p.global !== undefined && typeof p.global !== "boolean"))
                         throw new Error("Invalid scratchpad data");
                     const entries = Points.readPoints(p, data.version);
                     const content = Points.combined(entries);
-                    if (root.isBlank(content) && (data.version < 3 || root.isBlank(p.name))) continue;
+                    if (!p.global && root.isBlank(content) && (data.version < 3 || root.isBlank(p.name))) continue;
                     const pad = {
-                        name: data.version === 3 ? p.name : Points.title(entries),
+                        name: p.global ? "Global" : data.version === 3 ? p.name : Points.title(entries),
+                        global: p.global === true,
                         text: content,
                         pointsJson: JSON.stringify(entries),
-                        pinned: p.pinned === true,
+                        pinned: p.global === true || p.pinned === true,
                         sourceIndex: i
                     };
-                    if (pad.pinned) pinned.push(pad);
+                    if (pad.global) globals.push(pad);
+                    else if (pad.pinned) pinned.push(pad);
                     else rest.push(pad);
                 }
-                const ordered = pinned.concat(rest);
+                if (globals.length > 1) throw new Error("Multiple global containers");
+                if (!globals.length) globals.push({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true, sourceIndex: -2 });
+                const ordered = globals.concat(pinned, rest);
                 pads.clear();
                 let active = -1;
                 for (let i = 0; i < ordered.length; i++) {
                     const pad = ordered[i];
-                    pads.append({ name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: pad.pinned });
+                    pads.append({ name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: pad.pinned, global: pad.global });
                     if (pad.sourceIndex === activeSource) active = i;
                 }
                 if (active < 0 && pads.count > 0) active = 0;
@@ -353,7 +408,11 @@ Scope {
                 }
                 root.ready = true;
                 root.errorMessage = "";
-                Qt.callLater(root.focusContent);
+                if (root.pendingCaptures.length) {
+                    const captures = root.pendingCaptures;
+                    root.pendingCaptures = [];
+                    for (const body of captures) root.captureGlobal(body);
+                } else Qt.callLater(root.focusContent);
             } catch (error) {
                 root.errorMessage = "Unable to load notes — " + error.message;
             }
@@ -375,9 +434,19 @@ Scope {
         onTriggered: root.clearArmed = false
     }
 
+    Timer {
+        id: clearPointsArm
+        interval: 2500
+        onTriggered: root.clearPointsArmed = false
+    }
+
     // Used by `toggle start` to re-create the window if it was closed.
     IpcHandler {
         target: "scratchpad"
+        function capture(text: string): void {
+            window.visible = true;
+            root.captureGlobal(text);
+        }
         function reveal(): void {
             window.visible = true;
             root.focusContent();
@@ -410,7 +479,7 @@ Scope {
         Shortcut {
             sequence: "Ctrl+W"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0
+            enabled: root.ready && root.activeIndex >= 0 && !root.activeGlobal
             onActivated: root.removePad(root.activeIndex)
         }
 
@@ -454,6 +523,7 @@ Scope {
 
             MenuItem {
                 id: pinAction
+                enabled: !root.activeGlobal
                 text: padMenu.pinText
                 implicitHeight: 28
                 onTriggered: root.togglePin(padMenu.target)
@@ -471,6 +541,7 @@ Scope {
             }
             MenuItem {
                 id: deleteAction
+                enabled: !root.activeGlobal
                 text: "Delete"
                 implicitHeight: 28
                 onTriggered: root.removePad(padMenu.target)
@@ -578,7 +649,7 @@ Scope {
                             onClicked: root.armClear()
                             ScratchpadToolTip {
                                 colors: theme
-                                text: "Remove every note"
+                                text: "Remove all notes and empty Global"
                                 visible: parent.containsMouse && !parent.pressed
                             }
                             hoverEnabled: true
@@ -594,6 +665,7 @@ Scope {
                         Layout.fillWidth: true
                         visible: root.activeIndex >= 0
                         enabled: root.ready
+                        readOnly: root.activeGlobal
                         text: root.activeTitle
                         placeholderText: "Title"
                         color: theme.foreground
@@ -664,6 +736,12 @@ Scope {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 3
+                        PointButton {
+                            colors: theme
+                            text: root.clearPointsArmed ? "Sure?" : "Clear points"
+                            enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
+                            onClicked: root.armClearPoints()
+                        }
                         Item { Layout.fillWidth: true }
                         PointButton {
                             colors: theme

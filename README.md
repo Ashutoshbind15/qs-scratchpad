@@ -9,11 +9,24 @@ renaming; press Enter to move from the title into the first point.
 A note with both an empty title and empty points is removed when you leave it
 or hide the scratchpad. Sidebar titles have no hover tooltips.
 
+Press **Super+A** from any application to add a point to **Global**, the permanent
+container at the top of the sidebar. This shortcut was unassigned on this desktop.
+It shows and focuses Global even if another note was selected or the scratchpad
+was already visible. Selected text is inserted automatically from the Wayland primary selection before
+focus changes. With no text selection, the point starts empty. Applications must
+support primary selection; the regular clipboard is left untouched. You can also
+type or paste into the new point; edits autosave. Repeated
+presses reuse an empty last point. Global cannot be renamed, unpinned, or deleted.
+Run `./capture` for the same behavior from a terminal.
+
+Every container has a **Clear points** button at the bottom. Click it twice within
+2.5 seconds to remove its points while retaining its title and container.
+
 Press **Ctrl+B** while the scratchpad has focus to hide or show the sidebar,
 **Ctrl+N** to create a note, or **Ctrl+W** to delete the note you're editing.
 Right-click a note in the sidebar to pin it or delete it. Pinned notes stay at
 the top, marked with a dot. **Clear all** at the bottom of the sidebar removes
-every note, including pinned ones; click it again to confirm.
+every individual note, including pinned ones, and empties Global; click it again to confirm.
 
 Click **Copy** at the bottom right to copy all nonblank points as a numbered Markdown
 list. Multiline text, nested lists, and code are indented under their point so
@@ -52,7 +65,7 @@ Notes live outside Git at `~/.local/share/quickshell-scratchpad/scratchpads.json
 first scratchpad on first launch and kept as a backup. The active scratchpad is
 restored on launch. Existing notes automatically load as one point with their
 original text intact. Saves use version 3 of the JSON format, storing an independent title in `name`
-and a `points` array per scratchpad. Version 1 and 2 notes keep all original
+and a `points` array per scratchpad. The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
 point text when loaded, with their existing first-line title as the initial title. Requires Quickshell, Qt Quick Controls, Python 3, Hyprland
 (Lua config), and flock.
 
@@ -71,4 +84,5 @@ to use a different palette file. No Omarchy configuration changes are required.
 Run the Markdown, highlighting, migration, and export checks with
 `node --test tests/*.test.cjs`. Run `python3 tests/qml-smoke.py` for an isolated,
 offscreen QML check of editing, reordering, preview, switching, pinning, and
-persistence (requires Quickshell).
+persistence (requires Quickshell). Run `python3 tests/capture.test.py` to check
+selection capture and the empty-selection fallback without touching the clipboard.

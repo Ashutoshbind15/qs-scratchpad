@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Always append to Global, regardless of the currently selected note.
+set -euo pipefail
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Read PRIMARY before revealing the scratchpad changes the focused application.
+# Keep trailing newlines with a sentinel; never fall back to stale clipboard text.
+selected_text="$(timeout 1s wl-paste --primary --type text --no-newline 2>/dev/null && printf '.')" || selected_text='.'
+selected_text="${selected_text%.}"
+"$repo_dir/toggle" start
+quickshell ipc -p "$repo_dir" call -- scratchpad capture "$selected_text" >/dev/null
+hyprctl eval 'quickshell_scratchpad_show()' >/dev/null

@@ -22,6 +22,16 @@ function quickshell_scratchpad_toggle()
   end
 end
 
+-- Capture always shows the window, including when it is already visible.
+function quickshell_scratchpad_show()
+  local window = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
+  if not window then return end
+  hl.dispatch(hl.dsp.window.move({ workspace = hl.get_active_workspace(), window = window, follow = false }))
+  hl.dispatch(hl.dsp.focus({ window = window }))
+end
+
+o.bind("SUPER + A", "Add point to Global scratchpad", repo .. "/capture")
+
 o.bind("SUPER + N", "Notes scratchpad", quickshell_scratchpad_toggle)
 
 -- Right side, one quarter wide and three quarters tall.

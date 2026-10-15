@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     check(root.editor.text === "", "new point starts empty");
                     root.updateTitle("Custom title");
                     root.editor.text = "New scratchpad";
-                    root.selectPad(1); break;
+                    root.selectPad(2); break;
                 case 6:
                     check(points.count === 2 && points.get(0).body.indexOf("Second") === 0, "switch restores points");
                     root.togglePin(root.activeIndex); break;
@@ -74,6 +74,41 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     root.editor.text = "Final point";
                     root.save(); break;
                 case 10:
+                    root.captureGlobal(); break;
+                case 11:
+                    check(root.activeGlobal && root.activeTitle === "Global", "capture targets Global");
+                    check(points.count === 1 && root.editor.activeFocus, "capture focuses empty Global");
+                    root.editor.text = "Captured point";
+                    root.captureGlobal(); break;
+                case 12:
+                    check(points.count === 2 && root.editor.text === "", "capture appends fresh point");
+                    root.editor.text = "Second capture";
+                    root.selectPad(2);
+                    root.captureGlobal(); break;
+                case 13:
+                    check(points.count === 3 && points.get(0).body === "Captured point", "capture preserves Global across switches");
+                    root.removePad(root.activeIndex);
+                    check(root.activeGlobal, "Global cannot be deleted");
+                    root.armClearPoints();
+                    check(points.count === 3, "clear requires confirmation");
+                    root.armClearPoints();
+                    check(points.count === 1 && root.activeTitle === "Global", "clear keeps Global container");
+                    root.selectPad(2);
+                    root.armClearPoints(); root.armClearPoints();
+                    check(points.count === 1 && root.activeTitle === "Legacy", "clear keeps individual title");
+                    root.updatePoint(0, "Second point\\n- nested detail");
+                    root.addPoint(); root.updatePoint(1, "Final point");
+                    root.save(); break;
+                case 14:
+                    root.captureGlobal("Selected text\\nwith trailing newline\\n"); break;
+                case 15:
+                    check(root.activeGlobal && points.count === 1, "selection reuses empty Global point");
+                    check(root.editor.text === "Selected text\\nwith trailing newline\\n", "selection preserves exact text");
+                    root.captureGlobal("- second selection"); break;
+                case 16:
+                    check(points.count === 2 && root.editor.text === "- second selection", "selection appends without replacing existing point");
+                    root.selectPad(2);
+                    root.save();
                     console.log("POINTS_SMOKE_OK"); Qt.quit(); break;
                 }
             } catch (error) {
@@ -94,6 +129,8 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     assert "TypeError" not in output and "ReferenceError" not in output, output
     saved = json.loads(store.read_text())
     assert saved["version"] == 3, saved
+    assert len([p for p in saved["pads"] if p.get("global")]) == 1, saved
+    assert next(p for p in saved["pads"] if p.get("global"))["points"] == ["Selected text\nwith trailing newline\n", "- second selection"], saved
     active = saved["pads"][saved["activeIndex"]]
     assert active["points"] == ["Second point\n- nested detail", "Final point"], saved
     assert active["pinned"], saved
