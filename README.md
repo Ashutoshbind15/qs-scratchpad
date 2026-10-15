@@ -1,9 +1,16 @@
 # Quickshell Scratchpads
 
 Persistent scratchpads for pasted thread output and custom notes. The first line
-of a note becomes its title in the sidebar; empty notes appear as Untitled.
+of a note becomes its title in the sidebar. A new note is named untitled-1,
+untitled-2, and so on. That name is the first line, and it is selected so
+typing replaces it. A note with no text is removed when you leave it or hide
+the scratchpad.
+
 Press **Ctrl+B** while the scratchpad has focus to hide or show the sidebar,
-or **Ctrl+N** to create a new scratchpad and start writing.
+**Ctrl+N** to create a note, or **Ctrl+W** to delete the note you're editing.
+Right-click a note in the sidebar to pin it or delete it. Pinned notes stay at
+the top, marked with a dot. **Clear all** at the bottom of the sidebar removes
+every note, including pinned ones; click it again to confirm.
 
 Press **Super+N** (or run `./toggle`) to show it; press it again, or Escape, to hide it.
 If it is open on another workspace, Super+N brings it to your current workspace
