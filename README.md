@@ -62,6 +62,8 @@ window or taking focus. The first shortcut creates its surface; subsequent
 toggles only move the mapped window. Super+A sends capture directly to the running
 instance and only runs startup/recovery if needed. After an application exit,
 the next shortcut restarts it. A manual cold launch still includes Qt initialization.
+Closing the window with the window manager keeps the process running; the next
+shortcut resets Quickshell's visibility state and remaps it without restarting.
 Run `./toggle prewarm` to preload without showing the window in an existing session.
 The window floats on the right at 25% monitor width and 75% monitor height,
 with 32 logical pixels of space on the right and 48 below it.
@@ -93,3 +95,7 @@ offscreen QML check of editing, reordering, preview, switching, pinning, and
 persistence (requires Quickshell). Run `python3 tests/capture.test.py` to check
 selection capture and the empty-selection fallback without touching the clipboard.
 Run `python3 tests/toggle.test.py` for isolated preload and startup recovery checks.
+Run `python3 tests/wayland-reopen.py` inside Hyprland to check real window mapping
+after compositor closes, including capture and persistence without restarting.
+It briefly opens a test window and uses isolated notes. Offscreen tests do not
+exercise this native close/reopen behavior.

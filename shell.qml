@@ -345,6 +345,19 @@ Scope {
         Quickshell.execDetached(["hyprctl", "eval", "quickshell_scratchpad_toggle()"]);
     }
 
+    function revealWindow() {
+        if (!window.visible || !window.backingWindowVisible) {
+            // A compositor close hides the backing window without clearing
+            // Quickshell's requested-visible state. Assigning true alone is
+            // then a no-op. Reset it before requesting another surface.
+            window.visible = false;
+            Qt.callLater(function() {
+                window.visible = true;
+                root.focusContent();
+            });
+        } else focusContent();
+    }
+
     // The sidebar model. Titles are updated in place so typing never rebuilds
     // the list's delegates.
     ListModel { id: pads }
@@ -444,12 +457,11 @@ Scope {
         target: "scratchpad"
         function ping(): void {}
         function capture(text: string): void {
-            window.visible = true;
+            root.revealWindow();
             root.captureGlobal(text);
         }
         function reveal(): void {
-            window.visible = true;
-            root.focusContent();
+            root.revealWindow();
         }
     }
 
