@@ -6,6 +6,9 @@
 local repo = "/home/ash/projects/quickshell-scratchpad"
 local hidden = "special:quickshell-scratchpad"
 
+-- Pay Qt initialization and note loading at login, before the first shortcut.
+o.exec_on_start(repo .. "/toggle prewarm")
+
 function quickshell_scratchpad_toggle()
   local window = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
   if not window then
@@ -25,9 +28,10 @@ end
 -- Capture always shows the window, including when it is already visible.
 function quickshell_scratchpad_show()
   local window = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
-  if not window then return end
+  if not window then return false end
   hl.dispatch(hl.dsp.window.move({ workspace = hl.get_active_workspace(), window = window, follow = false }))
   hl.dispatch(hl.dsp.focus({ window = window }))
+  return true
 end
 
 o.bind("SUPER + A", "Add point to Global scratchpad", repo .. "/capture")

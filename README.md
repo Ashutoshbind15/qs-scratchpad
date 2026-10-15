@@ -18,6 +18,8 @@ support primary selection; the regular clipboard is left untouched. You can also
 type or paste into the new point; edits autosave. Repeated
 presses reuse an empty last point. Global cannot be renamed, unpinned, or deleted.
 Run `./capture` for the same behavior from a terminal.
+Selection reads have a 200 ms deadline: an unresponsive application opens an
+empty point instead of delaying the shortcut or inserting partial text.
 
 Every container has a **Clear points** button at the bottom. Click it twice within
 2.5 seconds to remove its points while retaining its title and container.
@@ -55,8 +57,12 @@ for reuse. Notes load asynchronously so disk reads do not block window creation.
 Toggling is instant: the window stays mapped and is parked on the silent
 `special:quickshell-scratchpad` workspace while hidden, and the toggle is a Lua
 function that runs inside Hyprland, so no process starts and no open animation
-plays. Only the first press after login starts Quickshell; cold startup still includes
-Qt initialization and loading the active note.
+plays. Quickshell preloads Qt and the active note at login without showing a
+window or taking focus. The first shortcut creates its surface; subsequent
+toggles only move the mapped window. Super+A sends capture directly to the running
+instance and only runs startup/recovery if needed. After an application exit,
+the next shortcut restarts it. A manual cold launch still includes Qt initialization.
+Run `./toggle prewarm` to preload without showing the window in an existing session.
 The window floats on the right at 25% monitor width and 75% monitor height,
 with 32 logical pixels of space on the right and 48 below it.
 
@@ -86,3 +92,4 @@ Run the Markdown, highlighting, migration, and export checks with
 offscreen QML check of editing, reordering, preview, switching, pinning, and
 persistence (requires Quickshell). Run `python3 tests/capture.test.py` to check
 selection capture and the empty-selection fallback without touching the clipboard.
+Run `python3 tests/toggle.test.py` for isolated preload and startup recovery checks.

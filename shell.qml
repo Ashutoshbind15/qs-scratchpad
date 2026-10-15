@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Io
 import "ScratchpadPoints.js" as Points
 
@@ -343,7 +342,7 @@ Scope {
     function hideScratchpad() {
         pruneActiveIfBlank();
         save();
-        Hyprland.dispatch("quickshell_scratchpad_toggle");
+        Quickshell.execDetached(["hyprctl", "eval", "quickshell_scratchpad_toggle()"]);
     }
 
     // The sidebar model. Titles are updated in place so typing never rebuilds
@@ -443,6 +442,7 @@ Scope {
     // Used by `toggle start` to re-create the window if it was closed.
     IpcHandler {
         target: "scratchpad"
+        function ping(): void {}
         function capture(text: string): void {
             window.visible = true;
             root.captureGlobal(text);
@@ -457,7 +457,7 @@ Scope {
     // it on a special workspace (see omarchy.lua).
     FloatingWindow {
         id: window
-        visible: true
+        visible: Quickshell.env("SCRATCHPAD_PREWARM") !== "1"
         title: "Scratchpad"
         color: theme.background
         implicitWidth: 384

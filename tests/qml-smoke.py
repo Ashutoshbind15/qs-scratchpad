@@ -153,3 +153,48 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                             capture_output=True, text=True, timeout=10)
     assert "POINTS_RELOAD_OK" in result.stdout + result.stderr, result.stdout + result.stderr
     print("QML points, editing, ordering, preview, switching, pinning, save and reload passed")
+
+    # A login preload must load data without mapping or stealing focus. Exercise
+    # the real IPC entry points, including first capture before a surface exists.
+    source = (repo / "shell.qml").read_text().replace('function ping(): void {}',
+        'function ping(): void {}\n        function isVisible(): bool { return window.visible; }')
+    shell.write_text(source)
+    preload_env = {**env, "SCRATCHPAD_PREWARM": "1"}
+    process = subprocess.Popen(["quickshell", "-p", str(temp), "--no-color"],
+                               env=preload_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        import time
+        for attempt in range(50):
+            ping = subprocess.run(["quickshell", "ipc", "-p", str(temp), "call", "scratchpad", "ping"],
+                                  env=preload_env, capture_output=True, timeout=2)
+            if ping.returncode == 0:
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("preload IPC did not become ready")
+        for attempt in range(50):
+            state = subprocess.run(["quickshell", "ipc", "-p", str(temp), "call", "scratchpad", "isVisible"],
+                                   env=preload_env, capture_output=True, text=True, timeout=2)
+            if state.stdout.strip() in ("true", "false"):
+                break
+            time.sleep(0.02)
+        assert state.stdout.strip() == "false", state.stdout + state.stderr
+        request = subprocess.run(["quickshell", "ipc", "-p", str(temp), "call", "--", "scratchpad", "capture", "Preloaded capture"],
+                                 env=preload_env, capture_output=True, text=True, timeout=2)
+        assert request.returncode == 0, request.stderr
+        state = subprocess.run(["quickshell", "ipc", "-p", str(temp), "call", "scratchpad", "isVisible"],
+                               env=preload_env, capture_output=True, text=True, timeout=2)
+        assert state.stdout.strip() == "true", state.stdout + state.stderr
+        for attempt in range(50):
+            loaded = json.loads(store.read_text())
+            global_pad = next(p for p in loaded["pads"] if p.get("global"))
+            if global_pad["points"][-1] == "Preloaded capture":
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("preloaded capture was not saved")
+        print("Preload stays hidden; first IPC capture reveals and persists passed")
+    finally:
+        process.terminate()
+        output, _ = process.communicate(timeout=5)
+        assert "TypeError" not in output and "ReferenceError" not in output, output

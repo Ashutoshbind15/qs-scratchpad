@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # `toggle` shows/hides the scratchpad (same as Super+N). `toggle start` is the
-# cold path Hyprland calls when no scratchpad window exists yet.
+# cold path Hyprland calls when no scratchpad window exists yet. `prewarm`
+# initializes Qt and loads notes at login without showing a window.
 set -euo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ "${1:-}" != start ]]; then
+mode="${1:-toggle}"
+if [[ "$mode" != start && "$mode" != prewarm ]]; then
     exec hyprctl eval 'quickshell_scratchpad_toggle()' >/dev/null
 fi
 
@@ -12,7 +14,7 @@ export SCRATCHPAD_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/quickshell-scratchp
 mkdir -p -- "$(dirname -- "$SCRATCHPAD_FILE")"
 chmod 700 -- "$(dirname -- "$SCRATCHPAD_FILE")"
 exec 9>"${XDG_RUNTIME_DIR:-/tmp}/quickshell-scratchpad-${UID}.lock"
-flock 9
+flock -w 5 9 || { echo "Scratchpad startup is already in progress" >&2; exit 1; }
 # Preserve the original text file while migrating it into the first scratchpad.
 if [[ ! -e "$SCRATCHPAD_FILE" ]]; then
     python3 - <<'PYTHON'
@@ -26,6 +28,15 @@ with open(path, "x", opener=lambda name, flags: os.open(name, flags, 0o600)) as 
 PYTHON
 fi
 
+if [[ "$mode" == prewarm ]]; then
+    # Never reveal an existing window or change focus during login/reloads.
+    if timeout 0.75s quickshell ipc -p "$repo_dir" call scratchpad ping >/dev/null 2>&1; then
+        exit 0
+    fi
+    export SCRATCHPAD_PREWARM=1
+    exec quickshell -p "$repo_dir" --no-duplicate --daemonize 9>&-
+fi
+
 window_mapped() {
     for ((attempt = 0; attempt < 50; attempt++)); do
         [[ "$(hyprctl repl 'return #hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })')" == 1 ]] && return 0
@@ -35,13 +46,16 @@ window_mapped() {
 }
 
 # A running instance whose window was closed just needs it re-created.
-if quickshell ipc -p "$repo_dir" call scratchpad reveal >/dev/null 2>&1; then
+if timeout 0.75s quickshell ipc -p "$repo_dir" call scratchpad reveal >/dev/null 2>&1; then
     window_mapped && exit 0
     # It answered IPC but never mapped a window: its render side is wedged
     # (seen 2026-10-15). Restart it rather than failing on every press.
     echo "Scratchpad window did not map; restarting wedged instance" >&2
-    pkill -f "^quickshell( -n)? -p $repo_dir( |$)" || true
-    sleep 0.3
+fi
+# A hung instance can also stop answering IPC entirely. --no-duplicate alone
+# would keep that process alive and make every subsequent shortcut fail again.
+if pkill -f "^quickshell( -n)? -p $repo_dir( |$)"; then
+    sleep 0.1
 fi
 quickshell -p "$repo_dir" --no-duplicate --daemonize 9>&-
 window_mapped || { echo "Scratchpad window did not map" >&2; exit 1; }
