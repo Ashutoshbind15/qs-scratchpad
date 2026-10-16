@@ -5,8 +5,8 @@ Button {
     id: control
     required property var colors
     property string tooltip: ""
-    implicitHeight: 24
-    implicitWidth: Math.max(22, implicitContentWidth + 12)
+    implicitHeight: control.colors.px(24)
+    implicitWidth: Math.max(control.colors.px(22), implicitContentWidth + 12)
     padding: 3
     opacity: enabled ? 1 : 0.4
     ScratchpadToolTip {
@@ -17,7 +17,7 @@ Button {
     contentItem: Text {
         text: control.text
         color: control.colors.foreground
-        font.pixelSize: 12
+        font.pixelSize: control.colors.px(12)
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }

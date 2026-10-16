@@ -37,7 +37,7 @@ ScrollView {
                     color: view.colors.foreground
                     selectionColor: view.colors.selection
                     selectedTextColor: view.colors.foreground
-                    font.pixelSize: 15
+                    font.pixelSize: view.colors.px(15)
                     padding: 0
                     background: null
                     onLinkActivated: link => Qt.openUrlExternally(link)
@@ -56,14 +56,14 @@ ScrollView {
                         width: parent.width - 2
                         Item {
                             width: parent.width
-                            height: 26
+                            height: view.colors.px(26)
                             Text {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 6
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: block.modelData.language
                                 color: view.colors.muted
-                                font.pixelSize: 11
+                                font.pixelSize: view.colors.px(11)
                                 elide: Text.ElideRight
                                 width: Math.max(0, parent.width - copyButton.width - 24)
                             }
@@ -74,7 +74,7 @@ ScrollView {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: copied.running ? "Copied" : "Copy"
                                 flat: true
-                                implicitHeight: 26
+                                implicitHeight: view.colors.px(26)
                                 onClicked: {
                                     Quickshell.clipboardText = block.modelData.text;
                                     copied.restart();
@@ -83,7 +83,7 @@ ScrollView {
                                 contentItem: Text {
                                     text: copyButton.text
                                     color: copyButton.hovered ? view.colors.foreground : view.colors.muted
-                                    font.pixelSize: 11
+                                    font.pixelSize: view.colors.px(11)
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -113,7 +113,7 @@ ScrollView {
                                 selectByMouse: true
                                 wrapMode: TextEdit.NoWrap
                                 font.family: "monospace"
-                                font.pixelSize: 13
+                                font.pixelSize: view.colors.px(13)
                                 color: view.colors.foreground
                                 selectionColor: view.colors.selection
                                 selectedTextColor: view.colors.foreground

@@ -156,6 +156,12 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     root.openBrowseRow(0); break;
                 case 19:
                     check(!root.browsing && root.activeTitle === "Legacy", "browser opens the selected note");
+                    check(theme.fontSize === theme.defaultFontSize, "default text size");
+                    root.zoom(1); root.zoom(1); root.zoom(-1);
+                    check(theme.fontSize === theme.defaultFontSize + 1, "zoom steps text size");
+                    for (let i = 0; i < 40; i++) root.zoom(1);
+                    check(theme.fontSize === theme.maxFontSize, "zoom is clamped");
+                    root.zoom(0); root.zoom(1);
                     root.save();
                     console.log("POINTS_SMOKE_OK"); Qt.quit(); break;
                 }
@@ -185,6 +191,7 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     assert any(p["points"] == ["New scratchpad"] and p["name"] == "Custom title" for p in saved["pads"]), saved
     assert active["name"] == "Legacy", saved
     assert saved["browseMode"] == "scroll", saved
+    assert saved["fontSize"] == 18, saved
     # Relaunch the same store to exercise the v2 reader too.
     text = shell.read_text()
     start = text.index('    Timer {\n        interval: 120;')
@@ -192,7 +199,8 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     Timer {
         interval: 300; running: true
         onTriggered: {
-            if (root.ready && root.activeTitle === "Legacy" && points.count === 2 && points.get(1).body === "Final point")
+            if (root.ready && root.activeTitle === "Legacy" && points.count === 2 && points.get(1).body === "Final point"
+                    && theme.fontSize === 18)
                 console.log("POINTS_RELOAD_OK");
             Qt.quit();
         }

@@ -60,7 +60,7 @@ Rectangle {
         TextArea {
             id: input
             Layout.fillWidth: true
-            Layout.minimumHeight: 64
+            Layout.minimumHeight: card.colors.px(64)
             visible: !card.previewMode
             text: card.source
             color: card.colors.foreground
@@ -71,7 +71,7 @@ Rectangle {
             textFormat: TextEdit.PlainText
             wrapMode: TextEdit.Wrap
             selectByMouse: true
-            font.pixelSize: 15
+            font.pixelSize: card.colors.px(15)
             padding: 2
             background: null
             onTextChanged: if (text !== card.source) card.edited(text)

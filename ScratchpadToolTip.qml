@@ -11,14 +11,14 @@ ToolTip {
     topPadding: 4
     bottomPadding: 4
     margins: 4
-    implicitWidth: Math.min(240, contentItem.implicitWidth + leftPadding + rightPadding)
+    implicitWidth: Math.min(tip.colors.px(240), contentItem.implicitWidth + leftPadding + rightPadding)
     enter: null
     exit: null
 
     contentItem: Text {
         text: tip.text
         color: tip.colors.foreground
-        font.pixelSize: 12
+        font.pixelSize: tip.colors.px(12)
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
     }

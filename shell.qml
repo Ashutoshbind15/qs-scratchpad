@@ -310,9 +310,22 @@ Scope {
         case "deletePoint": deletePoint(); break;
         case "copy": if (ready && activeIndex >= 0 && hasText) copyForAgents(); break;
         case "preview": togglePreview(); break;
+        case "zoomIn": zoom(1); break;
+        case "zoomOut": zoom(-1); break;
+        case "zoomReset": zoom(0); break;
         case "hide": hideScratchpad(); break;
         case "capture": captureGlobal(); break;
         }
+    }
+
+    // Ctrl+= / Ctrl+- step the text size; Ctrl+0 restores the default.
+    function zoom(step) {
+        const size = step === 0 ? theme.defaultFontSize : theme.fontSize + step;
+        const next = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, size));
+        if (next === theme.fontSize) return;
+        theme.fontSize = next;
+        save();
+        Qt.callLater(ensureCursorVisible);
     }
 
     function isBlank(text) {
@@ -374,6 +387,7 @@ Scope {
             version: 3,
             activeIndex: data.length ? storedActive : 0,
             browseMode: browseScroll ? "scroll" : "pages",
+            fontSize: theme.fontSize,
             pads: data
         }, null, 2));
     }
@@ -595,6 +609,8 @@ Scope {
                 if (active < 0 && pads.count > 0) active = 0;
                 root.activeIndex = active;
                 root.browseScroll = data.browseMode === "scroll";
+                if (Number.isInteger(data.fontSize))
+                    theme.fontSize = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, data.fontSize));
                 root.activeTitle = active >= 0 ? pads.get(active).name : "";
                 points.clear();
                 if (active >= 0) {
@@ -749,6 +765,24 @@ Scope {
         }
 
         Shortcut {
+            sequences: ["Ctrl+=", "Ctrl++", "Ctrl+Shift+="]
+            context: Qt.WindowShortcut
+            onActivated: root.zoom(1)
+        }
+
+        Shortcut {
+            sequences: ["Ctrl+-", "Ctrl+_"]
+            context: Qt.WindowShortcut
+            onActivated: root.zoom(-1)
+        }
+
+        Shortcut {
+            sequence: "Ctrl+0"
+            context: Qt.WindowShortcut
+            onActivated: root.zoom(0)
+        }
+
+        Shortcut {
             sequence: "Escape"
             context: Qt.WindowShortcut
             enabled: !padMenu.opened && !helpPopup.opened
@@ -806,7 +840,7 @@ Scope {
                     selectionColor: theme.selection
                     selectedTextColor: theme.foreground
                     placeholderTextColor: theme.muted
-                    font.pixelSize: 13
+                    font.pixelSize: theme.px(13)
                     padding: 4
                     background: Rectangle {
                         color: theme.surface
@@ -849,7 +883,7 @@ Scope {
                         leftPadding: 6
                         text: section.toUpperCase()
                         color: theme.accent
-                        font.pixelSize: 10
+                        font.pixelSize: theme.px(10)
                         font.bold: true
                         font.letterSpacing: 1
                     }
@@ -858,7 +892,7 @@ Scope {
                         required property var modelData
                         required property int index
                         width: ListView.view.width
-                        height: 26
+                        height: theme.px(26)
                         padding: 0
                         onClicked: helpPopup.run(index)
                         contentItem: RowLayout {
@@ -869,13 +903,13 @@ Scope {
                                 text: helpRow.modelData.label
                                 color: theme.foreground
                                 elide: Text.ElideRight
-                                font.pixelSize: 12
+                                font.pixelSize: theme.px(12)
                             }
                             Text {
                                 rightPadding: 6
                                 text: helpRow.modelData.keys
                                 color: helpRow.index === helpList.currentIndex ? theme.foreground : theme.muted
-                                font.pixelSize: 11
+                                font.pixelSize: theme.px(11)
                                 font.family: "monospace"
                             }
                         }
@@ -891,7 +925,7 @@ Scope {
                     visible: helpPopup.rows.length === 0
                     text: "No matching shortcuts"
                     color: theme.muted
-                    font.pixelSize: 12
+                    font.pixelSize: theme.px(12)
                 }
             }
         }
@@ -903,7 +937,7 @@ Scope {
             property string pinText: "Pin"
             modal: false
             dim: false
-            width: 132
+            width: theme.px(132)
             padding: 2
             background: Rectangle {
                 color: theme.surface
@@ -916,12 +950,12 @@ Scope {
                 id: pinAction
                 enabled: !padMenu.global
                 text: padMenu.pinText
-                implicitHeight: 28
+                implicitHeight: theme.px(28)
                 onTriggered: root.togglePin(padMenu.target)
                 contentItem: Text {
                     text: pinAction.text
                     color: theme.foreground
-                    font.pixelSize: 12
+                    font.pixelSize: theme.px(12)
                     leftPadding: 6
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -934,12 +968,12 @@ Scope {
                 id: deleteAction
                 enabled: !padMenu.global
                 text: "Delete"
-                implicitHeight: 28
+                implicitHeight: theme.px(28)
                 onTriggered: root.removePad(padMenu.target)
                 contentItem: Text {
                     text: deleteAction.text
                     color: theme.foreground
-                    font.pixelSize: 12
+                    font.pixelSize: theme.px(12)
                     leftPadding: 6
                     verticalAlignment: Text.AlignVCenter
                 }
@@ -971,7 +1005,7 @@ Scope {
                     selectionColor: theme.selection
                     selectedTextColor: theme.foreground
                     placeholderTextColor: theme.muted
-                    font.pixelSize: 16
+                    font.pixelSize: theme.px(16)
                     font.bold: true
                     padding: 4
                     onTextEdited: root.updateTitle(text)
@@ -1028,6 +1062,7 @@ Scope {
                             visible: root.activeIndex < 0
                             text: "Ctrl+N for a new scratchpad"
                             color: theme.muted
+                            font.pixelSize: theme.px(13)
                             wrapMode: Text.Wrap
                         }
                     }
@@ -1085,7 +1120,7 @@ Scope {
                     selectionColor: theme.selection
                     selectedTextColor: theme.foreground
                     placeholderTextColor: theme.muted
-                    font.pixelSize: 13
+                    font.pixelSize: theme.px(13)
                     padding: 4
                     onTextChanged: root.browseQueryChanged()
                     background: Rectangle {
@@ -1124,7 +1159,7 @@ Scope {
                         required property int index
                         readonly property bool current: index === root.browseCurrent
                         width: ListView.view.width
-                        height: 26
+                        height: theme.px(26)
                         padding: 0
                         onClicked: root.openBrowseRow(index)
                         contentItem: Item {
@@ -1144,7 +1179,7 @@ Scope {
                                 height: parent.height
                                 text: browseRow.modelData.name
                                 color: theme.foreground
-                                font.pixelSize: 12
+                                font.pixelSize: theme.px(12)
                                 font.bold: browseRow.modelData.index === root.activeIndex
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
@@ -1157,7 +1192,7 @@ Scope {
                                 height: parent.height
                                 text: browseRow.modelData.snippet
                                 color: browseRow.current ? theme.foreground : theme.muted
-                                font.pixelSize: 11
+                                font.pixelSize: theme.px(11)
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -1179,7 +1214,7 @@ Scope {
                     visible: root.browseRows.length === 0
                     text: "No matching notes"
                     color: theme.muted
-                    font.pixelSize: 12
+                    font.pixelSize: theme.px(12)
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -1210,7 +1245,7 @@ Scope {
                         text: root.browseScroll ? root.browseRows.length + " notes"
                             : (root.browsePageShown + 1) + " / " + NoteList.pageCount(root.browseRows.length)
                         color: theme.muted
-                        font.pixelSize: 12
+                        font.pixelSize: theme.px(12)
                     }
                     PointButton {
                         colors: theme
@@ -1232,7 +1267,7 @@ Scope {
                 visible: root.errorMessage.length > 0
                 text: root.errorMessage
                 color: theme.muted
-                font.pixelSize: 11
+                font.pixelSize: theme.px(11)
             }
         }
     }

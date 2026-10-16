@@ -71,6 +71,10 @@ Press **Super+N** (or run `./toggle`) to show it; press it again, or Escape, to 
 If it is open on another workspace, Super+N brings it to your current workspace
 and focuses the editor. Edits autosave after 300 ms and on Escape.
 
+Press **Ctrl+=** / **Ctrl+-** to make all text larger or smaller (10–32 px point
+text, 17 px by default); **Ctrl+0** restores the default. Buttons and rows scale
+with the text, and the size is saved with your notes as `fontSize`.
+
 The UI uses square corners, thin borders, 4 px outer padding, and compact point
 cards and controls. Markdown previews are created only on first use and retained
 for reuse. Notes load asynchronously so disk reads do not block window creation.
@@ -94,7 +98,7 @@ Notes live outside Git at `~/.local/share/quickshell-scratchpad/scratchpads.json
 first scratchpad on first launch and kept as a backup. The active scratchpad is
 restored on launch. Existing notes automatically load as one point with their
 original text intact. Saves use version 3 of the JSON format, storing an independent title in `name`
-and a `points` array per scratchpad, plus the note list's `browseMode` (`pages` or `scroll`). The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
+and a `points` array per scratchpad, plus the note list's `browseMode` (`pages` or `scroll`) and the text `fontSize`. The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
 point text when loaded, with their existing first-line title as the initial title. Requires Quickshell, Qt Quick Controls, Python 3, Hyprland
 (Lua config), and flock.
 

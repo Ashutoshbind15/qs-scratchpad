@@ -20,6 +20,9 @@ var entries = [
     { section: "Points", action: "preview", label: "Preview points as Markdown", sequences: ["Ctrl+Shift+M"], keywords: "toggle edit render view" },
 
     { section: "Window", action: "hide", label: "Hide scratchpad", sequences: ["Escape"], keywords: "close dismiss" },
+    { section: "Window", action: "zoomIn", label: "Larger text", sequences: ["Ctrl+="], keywords: "font size zoom increase bigger" },
+    { section: "Window", action: "zoomOut", label: "Smaller text", sequences: ["Ctrl+-"], keywords: "font size zoom decrease" },
+    { section: "Window", action: "zoomReset", label: "Default text size", sequences: ["Ctrl+0"], keywords: "font size zoom reset" },
     { section: "Window", action: "help", label: "Keyboard shortcuts", sequences: ["F1", "Ctrl+/"], keywords: "help keybinds keybindings search" },
 
     { section: "Anywhere", action: "hide", label: "Show or hide scratchpad", sequences: ["Super+N"], keywords: "toggle open global" },

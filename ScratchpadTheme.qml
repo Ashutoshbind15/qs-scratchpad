@@ -7,6 +7,12 @@ Scope {
     property var values: ({})
     readonly property string home: Quickshell.env("HOME")
     property bool legacyPath: false
+    // Point text size in pixels; every other size scales with it.
+    readonly property int defaultFontSize: 17
+    readonly property int minFontSize: 10
+    readonly property int maxFontSize: 32
+    property int fontSize: defaultFontSize
+    readonly property real fontScale: fontSize / 15
     readonly property color background: pick("background", "#181c24")
     readonly property color foreground: pick("foreground", "#eef0f6")
     readonly property color surface: pick("lighter_background", blend(background, foreground, 0.04))
@@ -26,6 +32,8 @@ Scope {
         literal: pick("cyan", pick("color6", "#7dcfff"))
     })
 
+    // Scales a size designed for the original 15 px point text.
+    function px(size) { return Math.round(size * fontScale); }
     function pick(key, fallback) { return values[key] || fallback; }
     function blend(base, tint, amount) {
         const a = Qt.color(base), b = Qt.color(tint);
