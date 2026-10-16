@@ -8,7 +8,7 @@
 var entries = [
     { section: "Notes", action: "newNote", label: "New note", sequences: ["Ctrl+N"], keywords: "create add scratchpad" },
     { section: "Notes", action: "deleteNote", label: "Delete note", sequences: ["Ctrl+W"], keywords: "remove close scratchpad" },
-    { section: "Notes", action: "toggleSidebar", label: "Show or hide note list", sequences: ["Ctrl+B"], keywords: "toggle sidebar" },
+    { section: "Notes", action: "browse", label: "Browse notes", sequences: ["Ctrl+B"], keywords: "list search find open switch" },
 
     { section: "Points", action: "addPoint", label: "New point", sequences: ["Ctrl+Shift+N", "Ctrl+Return"], keywords: "create add" },
     { section: "Points", action: "deletePoint", label: "Delete point", sequences: ["Ctrl+Shift+W"], keywords: "remove clear" },

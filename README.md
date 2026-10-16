@@ -9,10 +9,10 @@ points. **Alt+Shift+Up** and **Alt+Shift+Down** reorder the current point, and
 does not change the title. New notes get an untitled-N title, selected for quick
 renaming; press Enter to move from the title into the first point.
 A note with both an empty title and empty points is removed when you leave it
-or hide the scratchpad. Sidebar titles have no hover tooltips.
+or hide the scratchpad.
 
 Press **Super+A** from any application to add a point to **Global**, the permanent
-container at the top of the sidebar. This shortcut was unassigned on this desktop.
+container at the top of the note list. This shortcut was unassigned on this desktop.
 It shows and focuses Global even if another note was selected or the scratchpad
 was already visible. Selected text is inserted automatically from the Wayland primary selection before
 focus changes. With no text selection, the point starts empty. Applications must
@@ -37,10 +37,18 @@ does the same to the current point: **Ctrl+N**/**Ctrl+Shift+N** create, and
 every other shortcut works only while the scratchpad window is focused, so it
 never overrides another application's keys.
 
-Press **Ctrl+B** while the scratchpad has focus to hide or show the sidebar,
-**Ctrl+N** to create a note, or **Ctrl+W** to delete the note you're editing.
-Right-click a note in the sidebar to pin it or delete it. Pinned notes stay at
-the top, marked with a dot. **Clear all** at the bottom of the sidebar removes
+Press **Ctrl+B** (or click **Notes** at the bottom left) to browse your notes: a
+full-window list of titles, each followed by the first line of its points, with
+the open note selected. Type to filter by title; every word must appear, and
+titles that start with your search come first. Up/Down move the selection,
+Enter opens it, and Escape clears the search, then returns to the note.
+The list shows 20 notes per page; **‹**/**›** or PageUp/PageDown turn pages,
+and Up/Down continue onto the next or previous page. Click **Scroll** to switch
+to infinite scroll, which loads 20 more notes as you reach the end (click
+**Pages** to switch back); the choice is saved. **Ctrl+N** creates a note, and
+**Ctrl+W** deletes the note you're editing, or the selected one while browsing.
+Right-click a note in the list to pin it or delete it. Pinned notes stay at
+the top, marked with a dot. **Clear all** at the bottom of the list removes
 every individual note, including pinned ones, and empties Global; click it again to confirm.
 
 Click **Copy** at the bottom right, or press **Ctrl+Shift+C**, to copy all nonblank points as a numbered Markdown
@@ -86,7 +94,7 @@ Notes live outside Git at `~/.local/share/quickshell-scratchpad/scratchpads.json
 first scratchpad on first launch and kept as a backup. The active scratchpad is
 restored on launch. Existing notes automatically load as one point with their
 original text intact. Saves use version 3 of the JSON format, storing an independent title in `name`
-and a `points` array per scratchpad. The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
+and a `points` array per scratchpad, plus the note list's `browseMode` (`pages` or `scroll`). The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
 point text when loaded, with their existing first-line title as the initial title. Requires Quickshell, Qt Quick Controls, Python 3, Hyprland
 (Lua config), and flock.
 
@@ -102,9 +110,9 @@ without restarting. It reads `~/.local/state/omarchy/current/theme/colors.toml`
 back to built-in colors when no palette is available. Set `SCRATCHPAD_THEME_FILE`
 to use a different palette file. No Omarchy configuration changes are required.
 
-Run the Markdown, highlighting, migration, and export checks with
+Run the Markdown, highlighting, migration, export, and note-search checks with
 `node --test tests/*.test.cjs`. Run `python3 tests/qml-smoke.py` for an isolated,
-offscreen QML check of editing, reordering, preview, switching, pinning, and
+offscreen QML check of editing, reordering, preview, switching, browsing, pinning, and
 persistence (requires Quickshell). Run `python3 tests/capture.test.py` to check
 selection capture and the empty-selection fallback without touching the clipboard.
 Run `python3 tests/toggle.test.py` for isolated preload and startup recovery checks.

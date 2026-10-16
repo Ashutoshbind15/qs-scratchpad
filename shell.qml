@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import "ScratchpadPoints.js" as Points
 import "Keybinds.js" as Keybinds
+import "NoteList.js" as NoteList
 
 Scope {
     id: root
@@ -15,7 +16,12 @@ Scope {
 
     property int activeIndex: 0
     property bool switching: false
-    property bool sidebarVisible: true
+    property bool browsing: false
+    property bool browseScroll: false
+    property int browsePage: 0
+    property int browseLoaded: NoteList.pageSize
+    property int browseCurrent: 0
+    property int padsRevision: 0
     property bool previewMode: false
     property bool clearArmed: false
     property bool clearPointsArmed: false
@@ -25,6 +31,7 @@ Scope {
 
     property string activeTitle: ""
     property int activePoint: 0
+    property bool editing: ready && activeIndex >= 0 && !browsing
     property var editor: pointRepeater.count > activePoint && pointRepeater.itemAt(activePoint) ? pointRepeater.itemAt(activePoint).editor : null
 
     function pointTexts() {
@@ -43,6 +50,7 @@ Scope {
     }
 
     function focusContent() {
+        if (browsing) { browseSearch.forceActiveFocus(); return; }
         const card = pointRepeater.itemAt(activePoint);
         if (card) card.focusContent();
         Qt.callLater(ensureCursorVisible);
@@ -83,7 +91,7 @@ Scope {
     function captureGlobal(text = "") {
         if (!ready) { pendingCaptures.push(text); return; }
         selectPad(globalIndex());
-        sidebarVisible = true;
+        browsing = false;
         previewMode = false;
         clearPointsArmed = false;
         // Reuse an empty last point so repeated presses do not pile up blanks.
@@ -164,9 +172,119 @@ Scope {
         focusContent();
     }
 
-    function toggleSidebar() {
-        sidebarVisible = !sidebarVisible;
+    // Note browser. Rows are recomputed from `pads` only while it is open.
+    readonly property var browseRows: {
+        padsRevision;
+        if (!browsing) return [];
+        const notes = [];
+        for (let i = 0; i < pads.count; i++) {
+            const pad = pads.get(i);
+            notes.push({ index: i, name: pad.name, pinned: !!pad.pinned, global: !!pad.global, snippet: NoteList.snippet(pad.text) });
+        }
+        return NoteList.filter(notes, browseSearch.text);
+    }
+    readonly property int browsePageShown: NoteList.clampPage(browsePage, browseRows.length)
+    readonly property var browseVisible: NoteList.visible(browseRows, browseScroll, browsePageShown, browseLoaded)
+    readonly property var browseSelected: browseCurrent >= 0 && browseCurrent < browseVisible.length ? browseVisible[browseCurrent] : null
+    onBrowseVisibleChanged: setBrowseCurrent(Math.min(browseCurrent, browseVisible.length - 1))
+
+    function setBrowseCurrent(index) {
+        browseCurrent = Math.max(0, index);
+        if (browseScroll && browseCurrent >= browseVisible.length - 3) loadMore();
+        Qt.callLater(function() { if (browsing) browseList.positionViewAtIndex(browseCurrent, ListView.Contain); });
+    }
+
+    // Shows the page (or scroll position) holding row `position` of browseRows.
+    function revealBrowseRow(position) {
+        position = Math.max(0, position);
+        if (browseScroll) {
+            browseLoaded = Math.max(NoteList.pageSize, Math.ceil((position + 1) / NoteList.pageSize) * NoteList.pageSize);
+            setBrowseCurrent(position);
+        } else {
+            browsePage = Math.floor(position / NoteList.pageSize);
+            setBrowseCurrent(position % NoteList.pageSize);
+        }
+    }
+
+    function browsePosition() {
+        return (browseScroll ? 0 : browsePageShown * NoteList.pageSize) + browseCurrent;
+    }
+
+    function openBrowser() {
+        if (!ready) return;
+        commitActive();
+        previewMode = false;
+        clearArmed = false;
+        browseSearch.text = "";
+        browsing = true;
+        let position = 0;
+        for (let i = 0; i < browseRows.length; i++) if (browseRows[i].index === activeIndex) position = i;
+        revealBrowseRow(position);
         focusContent();
+    }
+
+    function closeBrowser() {
+        browsing = false;
+        focusContent();
+    }
+
+    function toggleBrowser() {
+        if (browsing) closeBrowser();
+        else openBrowser();
+    }
+
+    function openBrowseRow(index) {
+        const row = browseVisible[index];
+        if (!row) return;
+        browsing = false;
+        if (selectPad(row.index) === activeIndex) focusContent();
+    }
+
+    function browseQueryChanged() {
+        browsePage = 0;
+        browseLoaded = NoteList.pageSize;
+        setBrowseCurrent(0);
+    }
+
+    // Up/Down cross page boundaries; in scroll mode they load ahead.
+    function browseMove(offset) {
+        const total = browseRows.length;
+        if (!total) return;
+        revealBrowseRow(Math.max(0, Math.min(total - 1, browsePosition() + offset)));
+    }
+
+    function turnBrowsePage(offset) {
+        if (browseScroll) { browseMove(offset * 10); return; }
+        const page = NoteList.clampPage(browsePageShown + offset, browseRows.length);
+        if (page === browsePageShown) return;
+        browsePage = page;
+        setBrowseCurrent(0);
+    }
+
+    function loadMore() {
+        if (browseScroll && browseLoaded < browseRows.length) browseLoaded += NoteList.pageSize;
+    }
+
+    // Switching modes keeps the selected note in view.
+    function setBrowseScroll(scroll) {
+        if (scroll === browseScroll) return;
+        const position = browsePosition();
+        browseScroll = scroll;
+        revealBrowseRow(position);
+        save();
+        focusContent();
+    }
+
+    function browseEscape() {
+        if (browseSearch.text) browseSearch.text = "";
+        else closeBrowser();
+    }
+
+    // Ctrl+W deletes the highlighted row while browsing, else the open note.
+    function deleteNote() {
+        if (!ready) return;
+        if (!browsing) { if (!activeGlobal) removePad(activeIndex); return; }
+        if (browseSelected && !browseSelected.global) removePad(browseSelected.index);
     }
 
     function openHelp() {
@@ -176,11 +294,14 @@ Scope {
     // Runs a help-overlay entry; each action keeps its shortcut's guards.
     function runBinding(action) {
         const hasText = !isBlank(Points.combined(pointTexts()));
+        if (browsing && ["addPoint", "previousPoint", "nextPoint", "movePointUp", "movePointDown",
+                         "deletePoint", "copy", "preview"].indexOf(action) >= 0)
+            browsing = false;
         switch (action) {
         case "help": openHelp(); break;
         case "newNote": newPad(); break;
-        case "deleteNote": if (ready && !activeGlobal) removePad(activeIndex); break;
-        case "toggleSidebar": toggleSidebar(); break;
+        case "deleteNote": deleteNote(); break;
+        case "browse": toggleBrowser(); break;
         case "addPoint": addPoint(); break;
         case "previousPoint": focusPoint(-1); break;
         case "nextPoint": focusPoint(1); break;
@@ -206,8 +327,8 @@ Scope {
         pads.setProperty(activeIndex, "name", activeTitle.trim() || "Untitled");
     }
 
-    // Swap the editor without touching the sidebar model, so opening a note
-    // does not rebuild the rows. selectTitle highlights the title field so a
+    // Swap the editor without touching the notes model, so opening a note
+    // does not rebuild the browser's rows. selectTitle highlights the title field so a
     // new note's name can be replaced immediately.
     function showEditor(index, selectTitle) {
         clearPointsArmed = false;
@@ -252,6 +373,7 @@ Scope {
         notes.setText(JSON.stringify({
             version: 3,
             activeIndex: data.length ? storedActive : 0,
+            browseMode: browseScroll ? "scroll" : "pages",
             pads: data
         }, null, 2));
     }
@@ -275,7 +397,7 @@ Scope {
         return index;
     }
 
-    // Lowest unused untitled-N among the notes already in the sidebar.
+    // Lowest unused untitled-N among the existing notes.
     function nextUntitled() {
         const used = [];
         for (let i = 0; i < pads.count; i++) {
@@ -290,6 +412,7 @@ Scope {
 
     function newPad() {
         if (!ready || switching) return;
+        browsing = false;
         previewMode = false;
         clearArmed = false;
         if (activeIndex >= 0 && activeIndex < pads.count && isBlank(activeText())) {
@@ -360,10 +483,10 @@ Scope {
     }
 
     function openPadMenu(index) {
-        const resolved = index === activeIndex ? index : selectPad(index);
-        if (resolved < 0 || resolved >= pads.count) return;
-        padMenu.target = resolved;
-        padMenu.pinText = pads.get(resolved).pinned ? "Unpin" : "Pin";
+        if (index < 0 || index >= pads.count) return;
+        padMenu.target = index;
+        padMenu.global = pads.get(index).global;
+        padMenu.pinText = pads.get(index).pinned ? "Unpin" : "Pin";
         padMenu.popup();
     }
 
@@ -390,6 +513,7 @@ Scope {
     }
 
     function hideScratchpad() {
+        browsing = false;
         pruneActiveIfBlank();
         save();
         Quickshell.execDetached(["hyprctl", "eval", "quickshell_scratchpad_toggle()"]);
@@ -408,9 +532,17 @@ Scope {
         } else focusContent();
     }
 
-    // The sidebar model. Titles are updated in place so typing never rebuilds
-    // the list's delegates.
+    // All notes, in browser order. Titles are updated in place so typing never
+    // rebuilds the list's delegates.
     ListModel { id: pads }
+    Connections {
+        target: pads
+        function onDataChanged() { root.padsRevision++; }
+        function onRowsInserted() { root.padsRevision++; }
+        function onRowsRemoved() { root.padsRevision++; }
+        function onRowsMoved() { root.padsRevision++; }
+        function onModelReset() { root.padsRevision++; }
+    }
     ListModel { id: points }
     Timer { id: copied; interval: 1500 }
 
@@ -462,6 +594,7 @@ Scope {
                 }
                 if (active < 0 && pads.count > 0) active = 0;
                 root.activeIndex = active;
+                root.browseScroll = data.browseMode === "scroll";
                 root.activeTitle = active >= 0 ? pads.get(active).name : "";
                 points.clear();
                 if (active >= 0) {
@@ -526,6 +659,7 @@ Scope {
         implicitHeight: 720
         onVisibleChanged: {
             if (!visible) {
+                root.browsing = false;
                 root.pruneActiveIfBlank();
                 root.save();
             } else root.focusContent();
@@ -541,14 +675,15 @@ Scope {
         Shortcut {
             sequence: "Ctrl+W"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0 && !root.activeGlobal
-            onActivated: root.removePad(root.activeIndex)
+            enabled: root.ready && (root.browsing ? root.browseSelected !== null && !root.browseSelected.global
+                                                  : root.activeIndex >= 0 && !root.activeGlobal)
+            onActivated: root.deleteNote()
         }
 
         Shortcut {
             sequence: "Ctrl+B"
             context: Qt.WindowShortcut
-            onActivated: root.toggleSidebar()
+            onActivated: root.toggleBrowser()
         }
 
         Shortcut {
@@ -560,56 +695,56 @@ Scope {
         Shortcut {
             sequences: ["Ctrl+Shift+N", "Ctrl+Return", "Ctrl+Enter"]
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0
+            enabled: root.editing
             onActivated: root.addPoint()
         }
 
         Shortcut {
             sequence: "Alt+Up"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0 && points.count > 1
+            enabled: root.editing && points.count > 1
             onActivated: root.focusPoint(-1)
         }
 
         Shortcut {
             sequence: "Alt+Down"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0 && points.count > 1
+            enabled: root.editing && points.count > 1
             onActivated: root.focusPoint(1)
         }
 
         Shortcut {
             sequence: "Alt+Shift+Up"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0 && root.activePoint > 0
+            enabled: root.editing && root.activePoint > 0
             onActivated: root.reorderPoint(-1)
         }
 
         Shortcut {
             sequence: "Alt+Shift+Down"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0 && root.activePoint < points.count - 1
+            enabled: root.editing && root.activePoint < points.count - 1
             onActivated: root.reorderPoint(1)
         }
 
         Shortcut {
             sequence: "Ctrl+Shift+W"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0
+            enabled: root.editing
             onActivated: root.deletePoint()
         }
 
         Shortcut {
             sequence: "Ctrl+Shift+C"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
+            enabled: root.editing && !root.isBlank(Points.combined(root.pointTexts()))
             onActivated: root.copyForAgents()
         }
 
         Shortcut {
             sequence: "Ctrl+Shift+M"
             context: Qt.WindowShortcut
-            enabled: root.ready && root.activeIndex >= 0
+            enabled: root.editing
             onActivated: root.togglePreview()
         }
 
@@ -617,7 +752,7 @@ Scope {
             sequence: "Escape"
             context: Qt.WindowShortcut
             enabled: !padMenu.opened && !helpPopup.opened
-            onActivated: root.hideScratchpad()
+            onActivated: root.browsing ? root.browseEscape() : root.hideScratchpad()
         }
 
         // Searchable list of shortcuts, styled after Omarchy's keybindings
@@ -764,6 +899,7 @@ Scope {
         Menu {
             id: padMenu
             property int target: -1
+            property bool global: false
             property string pinText: "Pin"
             modal: false
             dim: false
@@ -778,7 +914,7 @@ Scope {
 
             MenuItem {
                 id: pinAction
-                enabled: !root.activeGlobal
+                enabled: !padMenu.global
                 text: padMenu.pinText
                 implicitHeight: 28
                 onTriggered: root.togglePin(padMenu.target)
@@ -796,7 +932,7 @@ Scope {
             }
             MenuItem {
                 id: deleteAction
-                enabled: !root.activeGlobal
+                enabled: !padMenu.global
                 text: "Delete"
                 implicitHeight: 28
                 onTriggered: root.removePad(padMenu.target)
@@ -818,205 +954,277 @@ Scope {
             anchors.fill: parent
             anchors.margins: 4
             spacing: 4
-            RowLayout {
+            ColumnLayout {
+                visible: !root.browsing
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 4
-                Rectangle {
-                    visible: root.sidebarVisible
-                    Layout.preferredWidth: 108
-                    Layout.fillHeight: true
-                    color: theme.surface
-                    radius: 0
-                    // Anchored, not laid out, so the row geometry is final on the
-                    // first frame and does not settle after the window maps.
-                    ListView {
-                        id: padList
-                        anchors.fill: parent
-                        anchors.margins: 3
-                        anchors.bottomMargin: 28
-                        clip: true
-                        spacing: 2
-                        model: pads
-                        reuseItems: true
-                        delegate: ItemDelegate {
-                            id: padRow
-                            required property string name
-                            required property int index
-                            required property bool pinned
-                            width: ListView.view.width
-                            height: 26
-                            padding: 0
-                            highlighted: index === root.activeIndex
-                            contentItem: Item {
-                                Rectangle {
-                                    x: 2
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 6
-                                    height: 6
-                                    radius: 0
-                                    visible: padRow.pinned
-                                    color: theme.accent
-                                }
-                                Text {
-                                    x: 14
-                                    width: parent.width - 16
-                                    height: parent.height
-                                    text: padRow.name
-                                    color: theme.foreground
-                                    elide: Text.ElideRight
-                                    font.pixelSize: 12
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-                            background: Rectangle {
-                                color: padRow.index === root.activeIndex ? theme.selection
-                                        : padRow.hovered ? theme.hover : "transparent"
-                                radius: 0
-                            }
-                            onClicked: root.selectPad(padRow.index)
-
-                            // Right-click only, so a left-button drag can still scroll the list.
-                            TapHandler {
-                                acceptedButtons: Qt.RightButton
-                                onTapped: root.openPadMenu(padRow.index)
-                            }
-                        }
-                        ScrollBar.vertical: ScrollBar {}
-                    }
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.margins: 3
-                        height: 22
-                        radius: 0
-                        visible: pads.count > 0
-                        color: root.clearArmed ? theme.dangerBackground : "transparent"
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.clearArmed ? "Sure?" : "Clear all"
-                            color: root.clearArmed ? theme.foreground : theme.muted
-                            font.pixelSize: 12
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: root.armClear()
-                            ScratchpadToolTip {
-                                colors: theme
-                                text: "Remove all notes and empty Global"
-                                visible: parent.containsMouse && !parent.pressed
-                            }
-                            hoverEnabled: true
+                TextField {
+                    id: titleInput
+                    Layout.fillWidth: true
+                    visible: root.activeIndex >= 0
+                    enabled: root.ready
+                    readOnly: root.activeGlobal
+                    text: root.activeTitle
+                    placeholderText: "Title"
+                    color: theme.foreground
+                    selectionColor: theme.selection
+                    selectedTextColor: theme.foreground
+                    placeholderTextColor: theme.muted
+                    font.pixelSize: 16
+                    font.bold: true
+                    padding: 4
+                    onTextEdited: root.updateTitle(text)
+                    onAccepted: root.focusContent()
+                    background: Rectangle {
+                        color: theme.surface
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: 1
+                            color: titleInput.activeFocus ? theme.accent : theme.border
                         }
                     }
                 }
-                ColumnLayout {
+                ScrollView {
+                    id: pointScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: 4
-                    TextField {
-                        id: titleInput
-                        Layout.fillWidth: true
-                        visible: root.activeIndex >= 0
-                        enabled: root.ready
-                        readOnly: root.activeGlobal
-                        text: root.activeTitle
-                        placeholderText: "Title"
-                        color: theme.foreground
-                        selectionColor: theme.selection
-                        selectedTextColor: theme.foreground
-                        placeholderTextColor: theme.muted
-                        font.pixelSize: 16
-                        font.bold: true
-                        padding: 4
-                        onTextEdited: root.updateTitle(text)
-                        onAccepted: root.focusContent()
-                        background: Rectangle {
-                            color: theme.surface
-                            Rectangle {
-                                anchors.bottom: parent.bottom
+                    clip: true
+                    contentWidth: availableWidth
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    Column {
+                        width: pointScroll.availableWidth
+                        spacing: 4
+                        Repeater {
+                            id: pointRepeater
+                            model: points
+                            delegate: PointCard {
+                                required property int index
+                                required property string body
                                 width: parent.width
-                                height: 1
-                                color: titleInput.activeFocus ? theme.accent : theme.border
-                            }
-                        }
-                    }
-                    ScrollView {
-                        id: pointScroll
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        contentWidth: availableWidth
-                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                        Column {
-                            width: pointScroll.availableWidth
-                            spacing: 4
-                            Repeater {
-                                id: pointRepeater
-                                model: points
-                                delegate: PointCard {
-                                    required property int index
-                                    required property string body
-                                    width: parent.width
-                                    colors: theme
-                                    number: index + 1
-                                    pointCount: points.count
-                                    source: body
-                                    previewMode: root.previewMode
-                                    onEdited: text => root.updatePoint(index, text)
-                                    onFocused: root.activePoint = index
-                                    onCaretMoved: Qt.callLater(root.ensureCursorVisible)
-                                    onRemoveRequested: root.removePoint(index)
-                                    onMoveRequested: offset => root.movePoint(index, offset)
-                                }
-                            }
-                            PointButton {
                                 colors: theme
-                                anchors.right: parent.right
-                                text: "+"
-                                Accessible.name: "Add point"
-                                enabled: root.ready && root.activeIndex >= 0
-                                onClicked: root.addPoint()
+                                number: index + 1
+                                pointCount: points.count
+                                source: body
+                                previewMode: root.previewMode
+                                onEdited: text => root.updatePoint(index, text)
+                                onFocused: root.activePoint = index
+                                onCaretMoved: Qt.callLater(root.ensureCursorVisible)
+                                onRemoveRequested: root.removePoint(index)
+                                onMoveRequested: offset => root.movePoint(index, offset)
                             }
-                            Label {
-                                width: parent.width
-                                visible: root.activeIndex < 0
-                                text: "Ctrl+N for a new scratchpad"
-                                color: theme.muted
-                                wrapMode: Text.Wrap
-                            }
+                        }
+                        PointButton {
+                            colors: theme
+                            anchors.right: parent.right
+                            text: "+"
+                            Accessible.name: "Add point"
+                            enabled: root.ready && root.activeIndex >= 0
+                            onClicked: root.addPoint()
+                        }
+                        Label {
+                            width: parent.width
+                            visible: root.activeIndex < 0
+                            text: "Ctrl+N for a new scratchpad"
+                            color: theme.muted
+                            wrapMode: Text.Wrap
                         }
                     }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 3
-                        PointButton {
-                            colors: theme
-                            text: root.clearPointsArmed ? "Sure?" : "Clear points"
-                            enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
-                            onClicked: root.armClearPoints()
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    PointButton {
+                        colors: theme
+                        text: "Notes"
+                        tooltip: "Browse notes (Ctrl+B)"
+                        enabled: root.ready
+                        onClicked: root.openBrowser()
+                    }
+                    PointButton {
+                        colors: theme
+                        text: root.clearPointsArmed ? "Sure?" : "Clear points"
+                        enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
+                        onClicked: root.armClearPoints()
+                    }
+                    PointButton {
+                        colors: theme
+                        text: "?"
+                        tooltip: "Keyboard shortcuts (F1)"
+                        Accessible.name: "Keyboard shortcuts"
+                        onClicked: root.openHelp()
+                    }
+                    Item { Layout.fillWidth: true }
+                    PointButton {
+                        colors: theme
+                        text: root.previewMode ? "Edit" : "Preview"
+                        enabled: root.ready && root.activeIndex >= 0
+                        onClicked: root.togglePreview()
+                    }
+                    PointButton {
+                        colors: theme
+                        text: copied.running ? "Copied!" : "Copy"
+                        enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
+                        onClicked: root.copyForAgents()
+                    }
+                }
+            }
+            // Linear, title-searchable list of notes. Pages of 20, or an
+            // infinite scroll that loads 20 more as you reach the end.
+            ColumnLayout {
+                visible: root.browsing
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 4
+                TextField {
+                    id: browseSearch
+                    Layout.fillWidth: true
+                    placeholderText: "Search notes by title…"
+                    color: theme.foreground
+                    selectionColor: theme.selection
+                    selectedTextColor: theme.foreground
+                    placeholderTextColor: theme.muted
+                    font.pixelSize: 13
+                    padding: 4
+                    onTextChanged: root.browseQueryChanged()
+                    background: Rectangle {
+                        color: theme.surface
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: 1
+                            color: browseSearch.activeFocus ? theme.accent : theme.border
                         }
-                        PointButton {
-                            colors: theme
-                            text: "?"
-                            tooltip: "Keyboard shortcuts (F1)"
-                            Accessible.name: "Keyboard shortcuts"
-                            onClicked: root.openHelp()
+                    }
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Up) root.browseMove(-1);
+                        else if (event.key === Qt.Key_Down) root.browseMove(1);
+                        else if (event.key === Qt.Key_PageUp) root.turnBrowsePage(-1);
+                        else if (event.key === Qt.Key_PageDown) root.turnBrowsePage(1);
+                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.openBrowseRow(root.browseCurrent);
+                        else return;
+                        event.accepted = true;
+                    }
+                }
+                ListView {
+                    id: browseList
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: 2
+                    model: root.browseVisible
+                    boundsBehavior: Flickable.StopAtBounds
+                    onAtYEndChanged: if (atYEnd) root.loadMore()
+                    // Keep loading until the rows fill the view.
+                    onCountChanged: Qt.callLater(function() { if (browseList.atYEnd) root.loadMore(); })
+                    delegate: ItemDelegate {
+                        id: browseRow
+                        required property var modelData
+                        required property int index
+                        readonly property bool current: index === root.browseCurrent
+                        width: ListView.view.width
+                        height: 26
+                        padding: 0
+                        onClicked: root.openBrowseRow(index)
+                        contentItem: Item {
+                            Rectangle {
+                                x: 4
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 6
+                                height: 6
+                                radius: 0
+                                visible: browseRow.modelData.pinned
+                                color: theme.accent
+                            }
+                            Text {
+                                id: browseTitle
+                                x: 16
+                                width: Math.min(implicitWidth, (parent.width - 20) * 0.6)
+                                height: parent.height
+                                text: browseRow.modelData.name
+                                color: theme.foreground
+                                font.pixelSize: 12
+                                font.bold: browseRow.modelData.index === root.activeIndex
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            Text {
+                                anchors.left: browseTitle.right
+                                anchors.leftMargin: 8
+                                anchors.right: parent.right
+                                anchors.rightMargin: 6
+                                height: parent.height
+                                text: browseRow.modelData.snippet
+                                color: browseRow.current ? theme.foreground : theme.muted
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
-                        Item { Layout.fillWidth: true }
-                        PointButton {
-                            colors: theme
-                            text: root.previewMode ? "Edit" : "Preview"
-                            enabled: root.ready && root.activeIndex >= 0
-                            onClicked: root.togglePreview()
+                        background: Rectangle {
+                            color: browseRow.current ? theme.selection
+                                    : browseRow.hovered ? theme.hover : "transparent"
+                            radius: 0
                         }
-                        PointButton {
-                            colors: theme
-                            text: copied.running ? "Copied!" : "Copy"
-                            enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
-                            onClicked: root.copyForAgents()
+                        // Right-click only, so a left-button drag can still scroll the list.
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: root.openPadMenu(browseRow.modelData.index)
                         }
+                    }
+                    ScrollBar.vertical: ScrollBar {}
+                }
+                Label {
+                    visible: root.browseRows.length === 0
+                    text: "No matching notes"
+                    color: theme.muted
+                    font.pixelSize: 12
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    PointButton {
+                        colors: theme
+                        text: "Back"
+                        tooltip: "Back to the note (Escape)"
+                        onClicked: root.closeBrowser()
+                    }
+                    PointButton {
+                        colors: theme
+                        text: root.clearArmed ? "Sure?" : "Clear all"
+                        tooltip: "Remove all notes and empty Global"
+                        enabled: pads.count > 0
+                        onClicked: root.armClear()
+                    }
+                    Item { Layout.fillWidth: true }
+                    PointButton {
+                        colors: theme
+                        visible: !root.browseScroll
+                        text: "‹"
+                        Accessible.name: "Previous page"
+                        enabled: root.browsePageShown > 0
+                        onClicked: root.turnBrowsePage(-1)
+                    }
+                    Label {
+                        text: root.browseScroll ? root.browseRows.length + " notes"
+                            : (root.browsePageShown + 1) + " / " + NoteList.pageCount(root.browseRows.length)
+                        color: theme.muted
+                        font.pixelSize: 12
+                    }
+                    PointButton {
+                        colors: theme
+                        visible: !root.browseScroll
+                        text: "›"
+                        Accessible.name: "Next page"
+                        enabled: root.browsePageShown < NoteList.pageCount(root.browseRows.length) - 1
+                        onClicked: root.turnBrowsePage(1)
+                    }
+                    PointButton {
+                        colors: theme
+                        text: root.browseScroll ? "Pages" : "Scroll"
+                        tooltip: root.browseScroll ? "Show 20 notes per page" : "Infinite scroll"
+                        onClicked: root.setBrowseScroll(!root.browseScroll)
                     }
                 }
             }

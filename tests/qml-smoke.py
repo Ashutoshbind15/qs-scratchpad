@@ -123,13 +123,39 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                 case 17:
                     check(helpPopup.opened && helpSearch.activeFocus, "help opens with search focused");
                     check(helpPopup.rows.length > 10, "help lists shortcuts");
-                    helpSearch.text = "sidebar";
+                    helpSearch.text = "browse";
                     check(helpPopup.rows.length === 1 && helpPopup.rows[0].keys === "CTRL + B", "help filters shortcuts");
                     helpPopup.run(helpList.currentIndex); break;
                 case 18:
-                    check(!helpPopup.opened && !root.sidebarVisible, "help runs the selected shortcut");
-                    root.toggleSidebar();
-                    root.selectPad(2);
+                    check(!helpPopup.opened && root.browsing, "help runs the selected shortcut");
+                    check(browseSearch.activeFocus, "browser focuses search");
+                    check(root.browseSelected.index === root.activeIndex, "browser selects the open note");
+                    check(root.browseRows.length === 4 && root.browseVisible.length === 4, "browser lists every note");
+                    browseSearch.text = "cust";
+                    check(root.browseRows.length === 1 && root.browseRows[0].name === "Custom title", "browser filters by title");
+                    check(root.browseRows[0].snippet === "New scratchpad", "browser shows a snippet");
+                    browseSearch.text = "";
+                    for (let i = 0; i < 45; i++)
+                        pads.append({ name: "bulk-" + i, text: "", pointsJson: JSON.stringify([""]), pinned: false, global: false });
+                    check(root.browseRows.length === 49 && root.browseVisible.length === 20, "browser shows one page");
+                    root.turnBrowsePage(1);
+                    check(root.browsePageShown === 1 && root.browseVisible[0].name === "bulk-16", "next page");
+                    root.turnBrowsePage(5);
+                    check(root.browsePageShown === 2 && root.browseVisible.length === 9, "last page");
+                    root.browseMove(-root.browseCurrent - 1);
+                    check(root.browsePageShown === 1 && root.browseCurrent === 19, "moving up crosses pages");
+                    root.setBrowseScroll(true);
+                    check(root.browseVisible.length >= 40 && root.browseSelected.name === "bulk-35", "scroll mode keeps the selection");
+                    root.browseMove(20);
+                    check(root.browseVisible.length === 49, "scroll mode loads more");
+                    root.browseEscape();
+                    check(!root.browsing, "escape closes the browser");
+                    for (let i = pads.count - 1; i >= 4; i--) pads.remove(i);
+                    root.openBrowser();
+                    browseSearch.text = "legacy";
+                    root.openBrowseRow(0); break;
+                case 19:
+                    check(!root.browsing && root.activeTitle === "Legacy", "browser opens the selected note");
                     root.save();
                     console.log("POINTS_SMOKE_OK"); Qt.quit(); break;
                 }
@@ -158,6 +184,7 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     assert active["pinned"], saved
     assert any(p["points"] == ["New scratchpad"] and p["name"] == "Custom title" for p in saved["pads"]), saved
     assert active["name"] == "Legacy", saved
+    assert saved["browseMode"] == "scroll", saved
     # Relaunch the same store to exercise the v2 reader too.
     text = shell.read_text()
     start = text.index('    Timer {\n        interval: 120;')
