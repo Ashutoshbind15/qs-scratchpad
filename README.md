@@ -69,7 +69,11 @@ Points are always saved as the original Markdown. New notes open in edit mode.
 
 Press **Super+N** (or run `./toggle`) to show it; press it again, or Escape, to hide it.
 If it is open on another workspace, Super+N brings it to your current workspace
-and focuses the editor. Edits autosave after 300 ms and on Escape.
+and focuses the editor. **Super+Arrow** moves focus into and out of the scratchpad
+like any other window. Hyprland's directional focus doesn't cross between floating and
+tiled windows, so `omarchy.lua` replaces Omarchy's Super+Arrow bindings with
+a version that includes the scratchpad. It behaves exactly like the default
+when the scratchpad isn't on the current workspace. Edits autosave after 300 ms and on Escape.
 
 Press **Ctrl+=** / **Ctrl+-** to make all text larger or smaller (10–32 px point
 text, 17 px by default); **Ctrl+0** restores the default. Buttons and rows scale
