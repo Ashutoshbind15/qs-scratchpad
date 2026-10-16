@@ -66,8 +66,8 @@ Rectangle {
             visible: !card.previewMode
             text: card.source
             color: card.colors.foreground
-            selectionColor: card.colors.selection
-            selectedTextColor: card.colors.foreground
+            selectionColor: card.colors.textSelection
+            selectedTextColor: card.colors.selectedText
             placeholderTextColor: card.colors.muted
             placeholderText: "…"
             textFormat: TextEdit.PlainText

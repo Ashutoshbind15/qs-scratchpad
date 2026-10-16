@@ -35,8 +35,8 @@ ScrollView {
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
                     color: view.colors.foreground
-                    selectionColor: view.colors.selection
-                    selectedTextColor: view.colors.foreground
+                    selectionColor: view.colors.textSelection
+                    selectedTextColor: view.colors.selectedText
                     font.pixelSize: view.colors.px(15)
                     padding: 0
                     background: null
@@ -115,8 +115,8 @@ ScrollView {
                                 font.family: "monospace"
                                 font.pixelSize: view.colors.px(13)
                                 color: view.colors.foreground
-                                selectionColor: view.colors.selection
-                                selectedTextColor: view.colors.foreground
+                                selectionColor: view.colors.textSelection
+                                selectedTextColor: view.colors.selectedText
                                 padding: 6
                                 background: null
                             }

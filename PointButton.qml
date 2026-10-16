@@ -24,7 +24,7 @@ Button {
     background: Rectangle {
         color: control.down || control.checked ? control.colors.selection : control.hovered ? control.colors.hover : control.colors.surface
         border.width: 1
-        border.color: control.hovered ? control.colors.accent : control.colors.border
+        border.color: control.hovered || control.checked ? control.colors.accent : control.colors.border
         radius: 0
     }
 }

@@ -15,6 +15,7 @@ var entries = [
 
     { section: "Points", action: "addPoint", label: "New point", sequences: ["Ctrl+Shift+N", "Ctrl+Return"], keywords: "create add" },
     { section: "Points", action: "deletePoint", label: "Delete point", sequences: ["Ctrl+Shift+W"], keywords: "remove clear" },
+    { section: "Points", action: "clearPoints", label: "Clear all points (press twice)", sequences: ["Ctrl+Shift+Backspace"], keywords: "empty wipe reset remove every" },
     { section: "Points", action: "previousPoint", label: "Previous point", sequences: ["Alt+Up"], keywords: "focus go navigate" },
     { section: "Points", action: "nextPoint", label: "Next point", sequences: ["Alt+Down"], keywords: "focus go navigate" },
     { section: "Points", action: "movePointUp", label: "Move point up", sequences: ["Alt+Shift+Up"], keywords: "reorder" },
@@ -24,6 +25,8 @@ var entries = [
 
     { section: "Window", action: "hide", label: "Hide scratchpad", sequences: ["Escape"], keywords: "close dismiss" },
     { section: "Window", action: "zen", label: "Zen mode", sequences: ["Ctrl+H"], keywords: "hide all buttons toolbar distraction free focus minimal" },
+    { section: "Window", action: "shortWindow", label: "Short window", sequences: ["Ctrl+Down"], keywords: "compact small quick height shrink mini" },
+    { section: "Window", action: "tallWindow", label: "Tall window", sequences: ["Ctrl+Up"], keywords: "full height grow large normal" },
     { section: "Window", action: "pointControls", label: "Show or hide point buttons", sequences: ["Ctrl+Shift+H"], keywords: "icons reorder arrows remove add controls toggle" },
     { section: "Window", action: "zoomIn", label: "Larger text", sequences: ["Ctrl+="], keywords: "font size zoom increase bigger" },
     { section: "Window", action: "zoomOut", label: "Smaller text", sequences: ["Ctrl+-"], keywords: "font size zoom decrease" },

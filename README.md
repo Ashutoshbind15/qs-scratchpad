@@ -10,7 +10,7 @@ the per-point **↑**/**↓**/**×** and **+** buttons, and **Ctrl+H** (or **Zen
 mode, which also hides the bottom bar so only the title and points remain;
 press it again to bring them back. Both choices are saved. In zen mode, actions whose confirmation
 would normally appear on a hidden button (copying, pinning, deleting a note, changing
-the text size) show a brief toast at the bottom of the window instead. Each point supports multiline text and Markdown. Editing a point
+the text size, the window height, clearing points) show a brief toast at the bottom of the window instead. Each point supports multiline text and Markdown. Editing a point
 does not change the title. New notes get an untitled-N title, selected for quick
 renaming; press Enter to move from the title into the first point.
 A note with both an empty title and empty points is removed when you leave it
@@ -29,7 +29,8 @@ Selection reads have a 200 ms deadline: an unresponsive application opens an
 empty point instead of delaying the shortcut or inserting partial text.
 
 Every container has a **Clear points** button at the bottom. Click it twice within
-2.5 seconds to remove its points while retaining its title and container.
+2.5 seconds (or press **Ctrl+Shift+Backspace** twice) to remove its points while
+retaining its title and container.
 
 Press **F1** or **Ctrl+/** (or click **?** at the bottom) to list every shortcut.
 Like Omarchy's keybindings menu, type to fuzzy-filter by action, key, or initials
@@ -105,14 +106,18 @@ Closing the window with the window manager keeps the process running; the next
 shortcut resets Quickshell's visibility state and remaps it without restarting.
 Run `./toggle prewarm` to preload without showing the window in an existing session.
 The window floats on the right at 25% monitor width and 75% monitor height,
-with 32 logical pixels of space on the right and 48 below it.
+with 32 logical pixels of space on the right and 48 below it. For quick notes,
+press **Ctrl+Down** (or click **Short** at the bottom) to shrink it to 30% of the
+monitor height, keeping the same bottom-right corner; **Ctrl+Up** restores the full
+height. The choice is saved as `shortWindow` and reapplied whenever the window maps.
+Hyprland does the resizing through `quickshell_scratchpad_layout()` in `omarchy.lua`.
 
 Notes live outside Git at `~/.local/share/quickshell-scratchpad/scratchpads.json`
 (or under `$XDG_DATA_HOME`). The original `scratchpad.txt` is imported into the
 first scratchpad on first launch and kept as a backup. The active scratchpad is
 restored on launch. Existing notes automatically load as one point with their
 original text intact. Saves use version 3 of the JSON format, storing an independent title in `name`
-and a `points` array per scratchpad, plus the note list's `browseMode` (`pages` or `scroll`), the text `fontSize`, and the `pointControls` and `zen` toggles. Each scratchpad records its last edit as `updated` (milliseconds since the epoch); notes saved before this field existed count as oldest and keep their previous order. The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
+and a `points` array per scratchpad, plus the note list's `browseMode` (`pages` or `scroll`), the text `fontSize`, and the `pointControls`, `zen`, and `shortWindow` toggles. Each scratchpad records its last edit as `updated` (milliseconds since the epoch); notes saved before this field existed count as oldest and keep their previous order. The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
 point text when loaded, with their existing first-line title as the initial title. Requires Quickshell, Qt Quick Controls, Python 3, Hyprland
 (Lua config), and flock.
 
@@ -120,6 +125,9 @@ The binding and window rule live in `omarchy.lua`, which
 `~/.config/hypr/hyprland.lua` loads with
 `dofile("/home/ash/projects/quickshell-scratchpad/omarchy.lua")`.
 T3 integration is future work; for now copy and paste into the editor.
+
+Selected text is drawn in the background color on the theme's accent, since
+Omarchy's `selection` color is too close to the point cards to see.
 
 The scratchpad automatically follows the active Omarchy theme, including light
 themes and code highlighting. Palette changes are picked up within two seconds,

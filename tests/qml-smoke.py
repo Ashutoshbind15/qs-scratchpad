@@ -183,12 +183,23 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     check(root.toastText === "Copied to clipboard", "zen copy toast");
                     root.zoom(1); root.zoom(-1);
                     check(root.toastText === "Text size " + theme.fontSize + " px", "zen zoom toast");
+                    root.runBinding("clearPoints");
+                    check(root.clearPointsArmed && points.count === 2 && root.toastText.indexOf("again") >= 0, "zen clear asks to press again");
+                    root.clearPointsArmed = false;
+                    root.runBinding("shortWindow");
+                    check(root.shortWindow && root.toastText.indexOf("Short window") === 0, "short window");
+                    root.runBinding("tallWindow");
+                    check(!root.shortWindow, "tall window");
+                    root.setShortWindow(true);
                     root.togglePointControls();
                     check(!root.zen && root.pointControls, "point buttons toggle leaves zen");
                     root.togglePointControls();
                     check(!root.pointControls && !pointRepeater.itemAt(0).showControls, "point buttons hide");
                     root.newPad(); break;
                 case 21:
+                    root.editor.text = "Throwaway";
+                    root.runBinding("clearPoints"); root.runBinding("clearPoints");
+                    check(points.count === 1 && root.editor.text === "", "clear points shortcut action");
                     root.editor.text = "Fresh note";
                     for (let i = 0; i < pads.count; i++) if (pads.get(i).name === "Custom title") root.selectPad(i);
                     break;
@@ -216,7 +227,9 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     shell = temp / "shell.qml"
     text = shell.read_text()
     shell.write_text(text[:text.rfind('}')] + harness + '}\n')
+    # Without Hyprland's socket, window-size requests can't reach the live scratchpad.
     env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "SCRATCHPAD_FILE": str(store)}
+    env.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
     result = subprocess.run(["quickshell", "-p", str(temp), "--no-color"], env=env,
                             capture_output=True, text=True, timeout=15)
     output = result.stdout + result.stderr
@@ -234,6 +247,7 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     assert saved["browseMode"] == "scroll", saved
     assert saved["fontSize"] == 18, saved
     assert saved["pointControls"] is False and saved["zen"] is False, saved
+    assert saved["shortWindow"] is True, saved
     assert active["updated"] > 0, saved
     assert next(p for p in saved["pads"] if p["name"] == "Other note")["updated"] == 0, saved
     # Relaunch the same store to exercise the v2 reader too.
@@ -244,7 +258,7 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
         interval: 300; running: true
         onTriggered: {
             if (root.ready && root.activeTitle === "Legacy" && points.count === 2 && points.get(1).body === "Final point"
-                    && theme.fontSize === 18 && !root.pointControls)
+                    && theme.fontSize === 18 && !root.pointControls && root.shortWindow)
                 console.log("POINTS_RELOAD_OK");
             Qt.quit();
         }

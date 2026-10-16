@@ -27,6 +27,9 @@ Scope {
     // hides those and the bottom bar. Both are saved with the notes.
     property bool pointControls: true
     property bool zen: false
+    // Ctrl+Down / Ctrl+Up switch between a short window for quick notes and
+    // the full-height one. Hyprland applies the size (see omarchy.lua).
+    property bool shortWindow: false
     property string toastText: ""
     property bool clearArmed: false
     property bool clearPointsArmed: false
@@ -123,12 +126,15 @@ Scope {
     }
 
     function armClearPoints() {
+        if (!ready || activeIndex < 0) return;
         if (!clearPointsArmed) {
             clearPointsArmed = true;
             clearPointsArm.restart();
+            toast("Press again to clear all points");
             return;
         }
         clearPointsArmed = false;
+        toast("Cleared points");
         previewMode = false;
         points.clear();
         points.append({ body: "" });
@@ -360,6 +366,18 @@ Scope {
         save();
     }
 
+    function setShortWindow(short) {
+        if (short === shortWindow) return;
+        shortWindow = short;
+        applyWindowSize();
+        toast(short ? "Short window · Ctrl+Up for tall" : "Tall window");
+        save();
+    }
+
+    function applyWindowSize() {
+        Quickshell.execDetached(["hyprctl", "eval", "quickshell_scratchpad_layout(" + shortWindow + ")"]);
+    }
+
     function openHelp() {
         if (!helpPopup.opened) helpPopup.open();
     }
@@ -368,7 +386,7 @@ Scope {
     function runBinding(action) {
         const hasText = !isBlank(Points.combined(pointTexts()));
         if (browsing && ["addPoint", "previousPoint", "nextPoint", "movePointUp", "movePointDown",
-                         "deletePoint", "copy", "preview"].indexOf(action) >= 0)
+                         "deletePoint", "clearPoints", "copy", "preview"].indexOf(action) >= 0)
             browsing = false;
         switch (action) {
         case "help": openHelp(); break;
@@ -386,6 +404,9 @@ Scope {
         case "movePointUp": reorderPoint(-1); break;
         case "movePointDown": reorderPoint(1); break;
         case "deletePoint": deletePoint(); break;
+        case "clearPoints": if (hasText) armClearPoints(); break;
+        case "shortWindow": setShortWindow(true); break;
+        case "tallWindow": setShortWindow(false); break;
         case "copy": if (ready && activeIndex >= 0 && hasText) copyForAgents(); break;
         case "preview": togglePreview(); break;
         case "zoomIn": zoom(1); break;
@@ -469,6 +490,7 @@ Scope {
             fontSize: theme.fontSize,
             pointControls: pointControls,
             zen: zen,
+            shortWindow: shortWindow,
             pads: data
         }, null, 2));
     }
@@ -680,6 +702,8 @@ Scope {
                 root.browseScroll = data.browseMode === "scroll";
                 root.pointControls = data.pointControls !== false;
                 root.zen = data.zen === true;
+                root.shortWindow = data.shortWindow === true;
+                if (root.shortWindow && window.backingWindowVisible) root.applyWindowSize();
                 if (Number.isInteger(data.fontSize))
                     theme.fontSize = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, data.fontSize));
                 root.activeTitle = active >= 0 ? pads.get(active).name : "";
@@ -756,6 +780,8 @@ Scope {
                 root.save();
             } else root.focusContent();
         }
+        // Hyprland's window rule maps it tall, including after a compositor close.
+        onBackingWindowVisibleChanged: if (backingWindowVisible && root.ready && root.shortWindow) root.applyWindowSize()
 
         Shortcut {
             sequence: "Ctrl+N"
@@ -862,6 +888,25 @@ Scope {
         }
 
         Shortcut {
+            sequence: "Ctrl+Shift+Backspace"
+            context: Qt.WindowShortcut
+            enabled: root.editing && !root.isBlank(Points.combined(root.pointTexts()))
+            onActivated: root.armClearPoints()
+        }
+
+        Shortcut {
+            sequence: "Ctrl+Down"
+            context: Qt.WindowShortcut
+            onActivated: root.setShortWindow(true)
+        }
+
+        Shortcut {
+            sequence: "Ctrl+Up"
+            context: Qt.WindowShortcut
+            onActivated: root.setShortWindow(false)
+        }
+
+        Shortcut {
             sequence: "Ctrl+Shift+C"
             context: Qt.WindowShortcut
             enabled: root.editing && !root.isBlank(Points.combined(root.pointTexts()))
@@ -948,8 +993,8 @@ Scope {
                     Layout.fillWidth: true
                     placeholderText: "Search shortcuts…"
                     color: theme.foreground
-                    selectionColor: theme.selection
-                    selectedTextColor: theme.foreground
+                    selectionColor: theme.textSelection
+                    selectedTextColor: theme.selectedText
                     placeholderTextColor: theme.muted
                     font.pixelSize: theme.px(13)
                     padding: 4
@@ -1113,8 +1158,8 @@ Scope {
                     text: root.activeTitle
                     placeholderText: "Title"
                     color: theme.foreground
-                    selectionColor: theme.selection
-                    selectedTextColor: theme.foreground
+                    selectionColor: theme.textSelection
+                    selectedTextColor: theme.selectedText
                     placeholderTextColor: theme.muted
                     font.pixelSize: theme.px(16)
                     font.bold: true
@@ -1194,6 +1239,7 @@ Scope {
                     PointButton {
                         colors: theme
                         text: root.clearPointsArmed ? "Sure?" : "Clear points"
+                        tooltip: "Remove every point (Ctrl+Shift+Backspace twice)"
                         enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
                         onClicked: root.armClearPoints()
                     }
@@ -1217,6 +1263,13 @@ Scope {
                         text: "Zen"
                         tooltip: "Hide all buttons (Ctrl+H)"
                         onClicked: root.toggleZen()
+                    }
+                    PointButton {
+                        colors: theme
+                        text: "Short"
+                        checked: root.shortWindow
+                        tooltip: root.shortWindow ? "Tall window (Ctrl+Up)" : "Short window for quick notes (Ctrl+Down)"
+                        onClicked: root.setShortWindow(!root.shortWindow)
                     }
                     Item { Layout.fillWidth: true }
                     PointButton {
@@ -1245,8 +1298,8 @@ Scope {
                     Layout.fillWidth: true
                     placeholderText: "Search notes by title…"
                     color: theme.foreground
-                    selectionColor: theme.selection
-                    selectedTextColor: theme.foreground
+                    selectionColor: theme.textSelection
+                    selectedTextColor: theme.selectedText
                     placeholderTextColor: theme.muted
                     font.pixelSize: theme.px(13)
                     padding: 4

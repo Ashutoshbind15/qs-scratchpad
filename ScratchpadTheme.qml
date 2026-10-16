@@ -19,6 +19,10 @@ Scope {
     readonly property color codeBackground: pick("dark_background", blend(background, foreground, 0.02))
     readonly property color accent: pick("accent", pick("color4", "#9eb6e0"))
     readonly property color selection: pick("selection", blend(background, accent, 0.35))
+    // Omarchy's `selection` is meant for list rows and is nearly invisible on
+    // the point cards, so selected text is inverted onto the accent instead.
+    readonly property color textSelection: accent
+    readonly property color selectedText: background
     readonly property color muted: blend(background, foreground, 0.65)
     readonly property color border: blend(background, foreground, 0.2)
     readonly property color hover: blend(background, accent, 0.18)

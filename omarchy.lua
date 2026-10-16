@@ -34,6 +34,18 @@ function quickshell_scratchpad_show()
   return true
 end
 
+-- Tall (the window rule's size) or short, keeping the bottom-right corner in
+-- place. Called by the scratchpad when the mode changes and when it maps.
+function quickshell_scratchpad_layout(short)
+  local window = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
+  if not window then return end
+  local monitor = hl.get_active_monitor()
+  local width, height = monitor.width / monitor.scale, monitor.height / monitor.scale
+  local size = { x = math.floor(width * 0.25), y = math.floor(height * (short and 0.3 or 0.75)) }
+  hl.dispatch(hl.dsp.window.resize({ x = size.x, y = size.y, window = window }))
+  hl.dispatch(hl.dsp.window.move({ x = monitor.x + width - size.x - 32, y = monitor.y + height - size.y - 48, window = window }))
+end
+
 -- Hyprland's directional focus never crosses between floating and tiled
 -- windows, so Super+arrows could neither reach the floating scratchpad nor
 -- leave it. These replace Omarchy's bindings and fall back to them whenever
@@ -99,7 +111,8 @@ o.bind("SUPER + A", "Add point to Global scratchpad", repo .. "/capture")
 
 o.bind("SUPER + N", "Notes scratchpad", quickshell_scratchpad_toggle)
 
--- Right side, one quarter wide and three quarters tall.
+-- Right side, one quarter wide and three quarters tall (see
+-- quickshell_scratchpad_layout for short mode).
 o.window({ class = "^org.quickshell$", title = "^Scratchpad$" }, {
   float = true,
   size = { "monitor_w * 0.25", "monitor_h * 0.75" },
