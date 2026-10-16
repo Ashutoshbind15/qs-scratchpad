@@ -119,6 +119,16 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     root.captureGlobal("- second selection"); break;
                 case 16:
                     check(points.count === 2 && root.editor.text === "- second selection", "selection appends without replacing existing point");
+                    root.openHelp(); break;
+                case 17:
+                    check(helpPopup.opened && helpSearch.activeFocus, "help opens with search focused");
+                    check(helpPopup.rows.length > 10, "help lists shortcuts");
+                    helpSearch.text = "sidebar";
+                    check(helpPopup.rows.length === 1 && helpPopup.rows[0].keys === "CTRL + B", "help filters shortcuts");
+                    helpPopup.run(helpList.currentIndex); break;
+                case 18:
+                    check(!helpPopup.opened && !root.sidebarVisible, "help runs the selected shortcut");
+                    root.toggleSidebar();
                     root.selectPad(2);
                     root.save();
                     console.log("POINTS_SMOKE_OK"); Qt.quit(); break;

@@ -2,7 +2,7 @@
 
 Persistent scratchpads for pasted thread output and custom notes. Each scratchpad
 has a separate editable title at the top, followed by point cards. Click **+**
-or press **Ctrl+Enter** to add a point. **Alt+Up** and **Alt+Down** move between
+or press **Ctrl+Shift+N** (or **Ctrl+Enter**) to add a point. **Alt+Up** and **Alt+Down** move between
 points. **Alt+Shift+Up** and **Alt+Shift+Down** reorder the current point, and
 **Ctrl+Shift+W** removes it (clearing it when it is the only one). The arrow and
 **×** buttons do the same. Each point supports multiline text and Markdown. Editing a point
@@ -25,6 +25,17 @@ empty point instead of delaying the shortcut or inserting partial text.
 
 Every container has a **Clear points** button at the bottom. Click it twice within
 2.5 seconds to remove its points while retaining its title and container.
+
+Press **F1** or **Ctrl+/** (or click **?** at the bottom) to list every shortcut.
+Like Omarchy's keybindings menu, type to fuzzy-filter by action, key, or initials
+(`ctrl shift c`, `mpd`), use Up/Down to pick, and press Enter to run it. Escape
+clears the search, then closes the list. Shortcuts are grouped into Notes, Points,
+Window, and Anywhere (system-wide) sections, with paired shortcuts side by side;
+they are defined in `Keybinds.js`. Ctrl+key acts on the note and Ctrl+Shift+key
+does the same to the current point: **Ctrl+N**/**Ctrl+Shift+N** create, and
+**Ctrl+W**/**Ctrl+Shift+W** delete. Only **Super+N** and **Super+A** are system-wide;
+every other shortcut works only while the scratchpad window is focused, so it
+never overrides another application's keys.
 
 Press **Ctrl+B** while the scratchpad has focus to hide or show the sidebar,
 **Ctrl+N** to create a note, or **Ctrl+W** to delete the note you're editing.

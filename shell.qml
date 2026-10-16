@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import "ScratchpadPoints.js" as Points
+import "Keybinds.js" as Keybinds
 
 Scope {
     id: root
@@ -161,6 +162,36 @@ Scope {
         if (!ready || activeIndex < 0) return;
         previewMode = !previewMode;
         focusContent();
+    }
+
+    function toggleSidebar() {
+        sidebarVisible = !sidebarVisible;
+        focusContent();
+    }
+
+    function openHelp() {
+        if (!helpPopup.opened) helpPopup.open();
+    }
+
+    // Runs a help-overlay entry; each action keeps its shortcut's guards.
+    function runBinding(action) {
+        const hasText = !isBlank(Points.combined(pointTexts()));
+        switch (action) {
+        case "help": openHelp(); break;
+        case "newNote": newPad(); break;
+        case "deleteNote": if (ready && !activeGlobal) removePad(activeIndex); break;
+        case "toggleSidebar": toggleSidebar(); break;
+        case "addPoint": addPoint(); break;
+        case "previousPoint": focusPoint(-1); break;
+        case "nextPoint": focusPoint(1); break;
+        case "movePointUp": reorderPoint(-1); break;
+        case "movePointDown": reorderPoint(1); break;
+        case "deletePoint": deletePoint(); break;
+        case "copy": if (ready && activeIndex >= 0 && hasText) copyForAgents(); break;
+        case "preview": togglePreview(); break;
+        case "hide": hideScratchpad(); break;
+        case "capture": captureGlobal(); break;
+        }
     }
 
     function isBlank(text) {
@@ -517,14 +548,17 @@ Scope {
         Shortcut {
             sequence: "Ctrl+B"
             context: Qt.WindowShortcut
-            onActivated: {
-                root.sidebarVisible = !root.sidebarVisible;
-                root.focusContent();
-            }
+            onActivated: root.toggleSidebar()
         }
 
         Shortcut {
-            sequences: ["Ctrl+Return", "Ctrl+Enter"]
+            sequences: ["F1", "Ctrl+/", "Ctrl+?"]
+            context: Qt.WindowShortcut
+            onActivated: root.openHelp()
+        }
+
+        Shortcut {
+            sequences: ["Ctrl+Shift+N", "Ctrl+Return", "Ctrl+Enter"]
             context: Qt.WindowShortcut
             enabled: root.ready && root.activeIndex >= 0
             onActivated: root.addPoint()
@@ -582,8 +616,149 @@ Scope {
         Shortcut {
             sequence: "Escape"
             context: Qt.WindowShortcut
-            enabled: !padMenu.opened
+            enabled: !padMenu.opened && !helpPopup.opened
             onActivated: root.hideScratchpad()
+        }
+
+        // Searchable list of shortcuts, styled after Omarchy's keybindings
+        // menu: type to filter, Up/Down to pick, Enter to run, Escape clears
+        // the search and then closes. Modal, so window shortcuts stay inactive.
+        Popup {
+            id: helpPopup
+            property var rows: Keybinds.filter(helpSearch.text)
+            x: 4
+            y: 4
+            width: window.width - 8
+            height: window.height - 8
+            modal: true
+            dim: false
+            padding: 4
+            closePolicy: Popup.NoAutoClose
+            onRowsChanged: helpList.currentIndex = Keybinds.bestIndex(rows)
+            onOpened: {
+                helpSearch.text = "";
+                helpList.currentIndex = Keybinds.bestIndex(rows);
+                helpSearch.forceActiveFocus();
+            }
+            onClosed: root.focusContent()
+
+            function run(index) {
+                if (index < 0 || index >= rows.length) return;
+                const action = rows[index].action;
+                close();
+                if (action !== "help") Qt.callLater(root.runBinding, action);
+            }
+
+            function move(offset) {
+                if (!rows.length) return;
+                helpList.currentIndex = Math.max(0, Math.min(rows.length - 1, helpList.currentIndex + offset));
+            }
+
+            background: Rectangle {
+                color: theme.background
+                border.color: theme.border
+                border.width: 1
+                radius: 0
+            }
+
+            contentItem: ColumnLayout {
+                spacing: 4
+                TextField {
+                    id: helpSearch
+                    Layout.fillWidth: true
+                    placeholderText: "Search shortcuts…"
+                    color: theme.foreground
+                    selectionColor: theme.selection
+                    selectedTextColor: theme.foreground
+                    placeholderTextColor: theme.muted
+                    font.pixelSize: 13
+                    padding: 4
+                    background: Rectangle {
+                        color: theme.surface
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: 1
+                            color: helpSearch.activeFocus ? theme.accent : theme.border
+                        }
+                    }
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Escape) {
+                            if (text) text = "";
+                            else helpPopup.close();
+                        } else if (event.key === Qt.Key_F1) helpPopup.close();
+                        else if (event.key === Qt.Key_Up) helpPopup.move(-1);
+                        else if (event.key === Qt.Key_Down) helpPopup.move(1);
+                        else if (event.key === Qt.Key_PageUp) helpPopup.move(-6);
+                        else if (event.key === Qt.Key_PageDown) helpPopup.move(6);
+                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) helpPopup.run(helpList.currentIndex);
+                        else return;
+                        event.accepted = true;
+                    }
+                }
+                ListView {
+                    id: helpList
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: 2
+                    model: helpPopup.rows
+                    boundsBehavior: Flickable.StopAtBounds
+                    highlightMoveDuration: 0
+                    section.property: "section"
+                    section.delegate: Text {
+                        required property string section
+                        width: ListView.view.width
+                        topPadding: 6
+                        bottomPadding: 2
+                        leftPadding: 6
+                        text: section.toUpperCase()
+                        color: theme.accent
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1
+                    }
+                    delegate: ItemDelegate {
+                        id: helpRow
+                        required property var modelData
+                        required property int index
+                        width: ListView.view.width
+                        height: 26
+                        padding: 0
+                        onClicked: helpPopup.run(index)
+                        contentItem: RowLayout {
+                            spacing: 8
+                            Text {
+                                Layout.fillWidth: true
+                                leftPadding: 6
+                                text: helpRow.modelData.label
+                                color: theme.foreground
+                                elide: Text.ElideRight
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                rightPadding: 6
+                                text: helpRow.modelData.keys
+                                color: helpRow.index === helpList.currentIndex ? theme.foreground : theme.muted
+                                font.pixelSize: 11
+                                font.family: "monospace"
+                            }
+                        }
+                        background: Rectangle {
+                            color: helpRow.index === helpList.currentIndex ? theme.selection
+                                    : helpRow.hovered ? theme.hover : "transparent"
+                            radius: 0
+                        }
+                    }
+                    ScrollBar.vertical: ScrollBar {}
+                }
+                Label {
+                    visible: helpPopup.rows.length === 0
+                    text: "No matching shortcuts"
+                    color: theme.muted
+                    font.pixelSize: 12
+                }
+            }
         }
 
         Menu {
@@ -821,6 +996,13 @@ Scope {
                             text: root.clearPointsArmed ? "Sure?" : "Clear points"
                             enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
                             onClicked: root.armClearPoints()
+                        }
+                        PointButton {
+                            colors: theme
+                            text: "?"
+                            tooltip: "Keyboard shortcuts (F1)"
+                            Accessible.name: "Keyboard shortcuts"
+                            onClicked: root.openHelp()
                         }
                         Item { Layout.fillWidth: true }
                         PointButton {
