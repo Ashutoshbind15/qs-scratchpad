@@ -133,6 +133,25 @@ Scope {
         Qt.callLater(focusContent);
     }
 
+    function focusPoint(offset) {
+        if (!ready || activeIndex < 0) return;
+        const next = activePoint + offset;
+        if (next < 0 || next >= points.count) return;
+        activePoint = next;
+        Qt.callLater(focusContent);
+    }
+
+    function reorderPoint(offset) {
+        if (!ready || activeIndex < 0) return;
+        if (activePoint + offset < 0 || activePoint + offset >= points.count) return;
+        movePoint(activePoint, offset);
+    }
+
+    function deletePoint() {
+        if (!ready || activeIndex < 0 || points.count === 0) return;
+        removePoint(activePoint);
+    }
+
     function copyForAgents() {
         Quickshell.clipboardText = Points.forAgents(pointTexts());
         copied.restart();
@@ -502,6 +521,55 @@ Scope {
                 root.sidebarVisible = !root.sidebarVisible;
                 root.focusContent();
             }
+        }
+
+        Shortcut {
+            sequences: ["Ctrl+Return", "Ctrl+Enter"]
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0
+            onActivated: root.addPoint()
+        }
+
+        Shortcut {
+            sequence: "Alt+Up"
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0 && points.count > 1
+            onActivated: root.focusPoint(-1)
+        }
+
+        Shortcut {
+            sequence: "Alt+Down"
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0 && points.count > 1
+            onActivated: root.focusPoint(1)
+        }
+
+        Shortcut {
+            sequence: "Alt+Shift+Up"
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0 && root.activePoint > 0
+            onActivated: root.reorderPoint(-1)
+        }
+
+        Shortcut {
+            sequence: "Alt+Shift+Down"
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0 && root.activePoint < points.count - 1
+            onActivated: root.reorderPoint(1)
+        }
+
+        Shortcut {
+            sequence: "Ctrl+Shift+W"
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0
+            onActivated: root.deletePoint()
+        }
+
+        Shortcut {
+            sequence: "Ctrl+Shift+C"
+            context: Qt.WindowShortcut
+            enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
+            onActivated: root.copyForAgents()
         }
 
         Shortcut {

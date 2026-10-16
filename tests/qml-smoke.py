@@ -49,6 +49,18 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     root.movePoint(1, -1); break;
                 case 3:
                     check(root.editor.text === "Second point\\n- nested detail", "moved editor");
+                    root.focusPoint(1);
+                    check(root.activePoint === 1 && root.editor.text.indexOf("original text") >= 0, "next point");
+                    root.focusPoint(1);
+                    check(root.activePoint === 1, "next point stops at the end");
+                    root.focusPoint(-1);
+                    check(root.activePoint === 0 && root.editor.text.indexOf("Second") === 0, "previous point");
+                    root.reorderPoint(1);
+                    check(points.get(1).body.indexOf("Second") === 0, "reorder down");
+                    root.reorderPoint(-1);
+                    check(points.get(0).body.indexOf("Second") === 0 && root.activePoint === 0, "reorder up");
+                    root.reorderPoint(-1);
+                    check(root.activePoint === 0 && points.get(0).body.indexOf("Second") === 0, "reorder stops at the top");
                     root.togglePreview(); break;
                 case 4:
                     check(findChild(pointRepeater.itemAt(0), "markdownLoader").item !== null, "preview loaded on demand");

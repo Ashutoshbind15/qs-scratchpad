@@ -2,8 +2,10 @@
 
 Persistent scratchpads for pasted thread output and custom notes. Each scratchpad
 has a separate editable title at the top, followed by point cards. Click **+**
-to add a point; use the arrows to reorder or **×** to remove one (clearing the
-last point). Each point supports multiline text and Markdown. Editing a point
+or press **Ctrl+Enter** to add a point. **Alt+Up** and **Alt+Down** move between
+points. **Alt+Shift+Up** and **Alt+Shift+Down** reorder the current point, and
+**Ctrl+Shift+W** removes it (clearing it when it is the only one). The arrow and
+**×** buttons do the same. Each point supports multiline text and Markdown. Editing a point
 does not change the title. New notes get an untitled-N title, selected for quick
 renaming; press Enter to move from the title into the first point.
 A note with both an empty title and empty points is removed when you leave it
@@ -30,7 +32,7 @@ Right-click a note in the sidebar to pin it or delete it. Pinned notes stay at
 the top, marked with a dot. **Clear all** at the bottom of the sidebar removes
 every individual note, including pinned ones, and empties Global; click it again to confirm.
 
-Click **Copy** at the bottom right to copy all nonblank points as a numbered Markdown
+Click **Copy** at the bottom right, or press **Ctrl+Shift+C**, to copy all nonblank points as a numbered Markdown
 list. Multiline text, nested lists, and code are indented under their point so
 agents can distinguish the separate items. The button briefly shows **Copied!**.
 
