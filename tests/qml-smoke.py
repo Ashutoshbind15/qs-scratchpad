@@ -131,12 +131,19 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     check(browseSearch.activeFocus, "browser focuses search");
                     check(root.browseSelected.index === root.activeIndex, "browser selects the open note");
                     check(root.browseRows.length === 4 && root.browseVisible.length === 4, "browser lists every note");
+                    check(JSON.stringify(root.browseRows.map(r => r.name)) === JSON.stringify(["Global", "Legacy", "Other note", "Custom title"]),
+                          "browser lists pinned notes, then newest edit first");
+                    root.setBrowseCurrent(3);
+                    root.pinNote();
+                    check(root.browseSelected.name === "Custom title" && root.browseCurrent === 2, "pinning keeps the selection on the note");
+                    root.pinNote();
+                    check(root.browseSelected.name === "Custom title" && root.browseCurrent === 3, "unpinning keeps the selection on the note");
                     browseSearch.text = "cust";
                     check(root.browseRows.length === 1 && root.browseRows[0].name === "Custom title", "browser filters by title");
                     check(root.browseRows[0].snippet === "New scratchpad", "browser shows a snippet");
                     browseSearch.text = "";
                     for (let i = 0; i < 45; i++)
-                        pads.append({ name: "bulk-" + i, text: "", pointsJson: JSON.stringify([""]), pinned: false, global: false });
+                        pads.append({ name: "bulk-" + i, text: "", pointsJson: JSON.stringify([""]), pinned: false, global: false, updated: 0 });
                     check(root.browseRows.length === 49 && root.browseVisible.length === 20, "browser shows one page");
                     root.turnBrowsePage(1);
                     check(root.browsePageShown === 1 && root.browseVisible[0].name === "bulk-16", "next page");
@@ -162,6 +169,40 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     for (let i = 0; i < 40; i++) root.zoom(1);
                     check(theme.fontSize === theme.maxFontSize, "zoom is clamped");
                     root.zoom(0); root.zoom(1);
+                    root.renameNote(); break;
+                case 20:
+                    check(titleInput.activeFocus && titleInput.selectedText === "Legacy", "F2 selects the title");
+                    root.openGlobal();
+                    check(root.activeGlobal, "Ctrl+G opens Global");
+                    check(pointRepeater.itemAt(0).showControls, "point buttons shown by default");
+                    check(!findChild(window.contentItem, "toast").visible, "no toast outside zen");
+                    root.toggleZen();
+                    check(root.zen && !pointRepeater.itemAt(0).showControls, "zen hides point buttons");
+                    check(findChild(window.contentItem, "toast").visible && root.toastText.indexOf("Ctrl+H") >= 0, "zen shows how to exit");
+                    root.copyForAgents();
+                    check(root.toastText === "Copied to clipboard", "zen copy toast");
+                    root.zoom(1); root.zoom(-1);
+                    check(root.toastText === "Text size " + theme.fontSize + " px", "zen zoom toast");
+                    root.togglePointControls();
+                    check(!root.zen && root.pointControls, "point buttons toggle leaves zen");
+                    root.togglePointControls();
+                    check(!root.pointControls && !pointRepeater.itemAt(0).showControls, "point buttons hide");
+                    root.newPad(); break;
+                case 21:
+                    root.editor.text = "Fresh note";
+                    for (let i = 0; i < pads.count; i++) if (pads.get(i).name === "Custom title") root.selectPad(i);
+                    break;
+                case 22:
+                    check(root.activeTitle === "Custom title", "reopened older note");
+                    root.updateTitle("Custom title");
+                    root.openBrowser();
+                    check(JSON.stringify(root.browseRows.map(r => r.name)) === JSON.stringify(["Global", "Legacy", "Other note", "Custom title", "untitled-1"]),
+                          "editing moves a note above newer ones");
+                    browseSearch.text = "t";
+                    check(JSON.stringify(root.browseRows.map(r => r.name)) === JSON.stringify(["Other note", "Custom title", "untitled-1"]),
+                          "search keeps the newest-first order");
+                    root.closeBrowser();
+                    for (let i = 0; i < pads.count; i++) if (pads.get(i).name === "Legacy") root.selectPad(i);
                     root.save();
                     console.log("POINTS_SMOKE_OK"); Qt.quit(); break;
                 }
@@ -192,6 +233,9 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     assert active["name"] == "Legacy", saved
     assert saved["browseMode"] == "scroll", saved
     assert saved["fontSize"] == 18, saved
+    assert saved["pointControls"] is False and saved["zen"] is False, saved
+    assert active["updated"] > 0, saved
+    assert next(p for p in saved["pads"] if p["name"] == "Other note")["updated"] == 0, saved
     # Relaunch the same store to exercise the v2 reader too.
     text = shell.read_text()
     start = text.index('    Timer {\n        interval: 120;')
@@ -200,7 +244,7 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
         interval: 300; running: true
         onTriggered: {
             if (root.ready && root.activeTitle === "Legacy" && points.count === 2 && points.get(1).body === "Final point"
-                    && theme.fontSize === 18)
+                    && theme.fontSize === 18 && !root.pointControls)
                 console.log("POINTS_RELOAD_OK");
             Qt.quit();
         }

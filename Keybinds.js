@@ -9,6 +9,9 @@ var entries = [
     { section: "Notes", action: "newNote", label: "New note", sequences: ["Ctrl+N"], keywords: "create add scratchpad" },
     { section: "Notes", action: "deleteNote", label: "Delete note", sequences: ["Ctrl+W"], keywords: "remove close scratchpad" },
     { section: "Notes", action: "browse", label: "Browse notes", sequences: ["Ctrl+B"], keywords: "list search find open switch" },
+    { section: "Notes", action: "renameNote", label: "Rename note", sequences: ["F2"], keywords: "title edit focus" },
+    { section: "Notes", action: "pinNote", label: "Pin or unpin note", sequences: ["Ctrl+P"], keywords: "top favorite keep" },
+    { section: "Notes", action: "openGlobal", label: "Open Global", sequences: ["Ctrl+G"], keywords: "switch go captures" },
 
     { section: "Points", action: "addPoint", label: "New point", sequences: ["Ctrl+Shift+N", "Ctrl+Return"], keywords: "create add" },
     { section: "Points", action: "deletePoint", label: "Delete point", sequences: ["Ctrl+Shift+W"], keywords: "remove clear" },
@@ -20,6 +23,8 @@ var entries = [
     { section: "Points", action: "preview", label: "Preview points as Markdown", sequences: ["Ctrl+Shift+M"], keywords: "toggle edit render view" },
 
     { section: "Window", action: "hide", label: "Hide scratchpad", sequences: ["Escape"], keywords: "close dismiss" },
+    { section: "Window", action: "zen", label: "Zen mode", sequences: ["Ctrl+H"], keywords: "hide all buttons toolbar distraction free focus minimal" },
+    { section: "Window", action: "pointControls", label: "Show or hide point buttons", sequences: ["Ctrl+Shift+H"], keywords: "icons reorder arrows remove add controls toggle" },
     { section: "Window", action: "zoomIn", label: "Larger text", sequences: ["Ctrl+="], keywords: "font size zoom increase bigger" },
     { section: "Window", action: "zoomOut", label: "Smaller text", sequences: ["Ctrl+-"], keywords: "font size zoom decrease" },
     { section: "Window", action: "zoomReset", label: "Default text size", sequences: ["Ctrl+0"], keywords: "font size zoom reset" },

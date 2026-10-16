@@ -16,9 +16,17 @@ test('search matches titles case-insensitively and needs every term', () => {
     assert.deepEqual(names(list.filter(all, 'notes bug')), ['notes on bugs']);
     assert.deepEqual(names(list.filter(all, 'zzz')), []);
 });
-test('title prefixes rank before word prefixes before inner matches', () => {
+test('search keeps the list order instead of ranking titles', () => {
     const all = notes(['debugging', 'my bug list', 'bug list']);
-    assert.deepEqual(names(list.filter(all, 'bug')), ['bug list', 'my bug list', 'debugging']);
+    assert.deepEqual(names(list.filter(all, 'bug')), ['debugging', 'my bug list', 'bug list']);
+});
+test('order puts Global, then pinned, then the rest, newest edit first', () => {
+    const all = [
+        { name: 'old', updated: 1 }, { name: 'pinned old', pinned: true, updated: 2 },
+        { name: 'new', updated: 9 }, { name: 'Global', global: true, pinned: true, updated: 0 },
+        { name: 'pinned new', pinned: true, updated: 5 }, { name: 'legacy a' }, { name: 'legacy b' },
+    ];
+    assert.deepEqual(names(list.order(all)), ['Global', 'pinned new', 'pinned old', 'new', 'old', 'legacy a', 'legacy b']);
 });
 test('pages hold twenty notes and clamp at the ends', () => {
     const rows = Array.from({ length: 45 }, (_, i) => i);

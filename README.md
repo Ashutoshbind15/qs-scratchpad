@@ -5,7 +5,12 @@ has a separate editable title at the top, followed by point cards. Click **+**
 or press **Ctrl+Shift+N** (or **Ctrl+Enter**) to add a point. **Alt+Up** and **Alt+Down** move between
 points. **Alt+Shift+Up** and **Alt+Shift+Down** reorder the current point, and
 **Ctrl+Shift+W** removes it (clearing it when it is the only one). The arrow and
-**×** buttons do the same. Each point supports multiline text and Markdown. Editing a point
+**×** buttons do the same. Press **Ctrl+Shift+H** (or click **⇅** at the bottom) to hide
+the per-point **↑**/**↓**/**×** and **+** buttons, and **Ctrl+H** (or **Zen**) for zen
+mode, which also hides the bottom bar so only the title and points remain;
+press it again to bring them back. Both choices are saved. In zen mode, actions whose confirmation
+would normally appear on a hidden button (copying, pinning, deleting a note, changing
+the text size) show a brief toast at the bottom of the window instead. Each point supports multiline text and Markdown. Editing a point
 does not change the title. New notes get an untitled-N title, selected for quick
 renaming; press Enter to move from the title into the first point.
 A note with both an empty title and empty points is removed when you leave it
@@ -39,16 +44,21 @@ never overrides another application's keys.
 
 Press **Ctrl+B** (or click **Notes** at the bottom left) to browse your notes: a
 full-window list of titles, each followed by the first line of its points, with
-the open note selected. Type to filter by title; every word must appear, and
-titles that start with your search come first. Up/Down move the selection,
+the open note selected. Notes are listed from the most recently edited to the
+oldest (editing the title or any point counts; just opening a note doesn't), after
+Global and pinned notes. Type to filter by title; every word must appear, and
+matches keep the same newest-first order. Up/Down move the selection,
 Enter opens it, and Escape clears the search, then returns to the note.
 The list shows 20 notes per page; **‹**/**›** or PageUp/PageDown turn pages,
 and Up/Down continue onto the next or previous page. Click **Scroll** to switch
 to infinite scroll, which loads 20 more notes as you reach the end (click
 **Pages** to switch back); the choice is saved. **Ctrl+N** creates a note, and
 **Ctrl+W** deletes the note you're editing, or the selected one while browsing.
-Right-click a note in the list to pin it or delete it. Pinned notes stay at
-the top, marked with a dot. **Clear all** at the bottom of the list removes
+Right-click a note in the list (or press **Ctrl+P**) to pin it, or right-click to
+delete it. Pinned notes stay at the top, newest edit first, marked with a dot.
+**Ctrl+P** pins the open note, or the selected one while browsing. **F2** selects
+the title for renaming (opening the selected note first while browsing), and
+**Ctrl+G** jumps to Global. **Clear all** at the bottom of the list removes
 every individual note, including pinned ones, and empties Global; click it again to confirm.
 
 Click **Copy** at the bottom right, or press **Ctrl+Shift+C**, to copy all nonblank points as a numbered Markdown
@@ -102,7 +112,7 @@ Notes live outside Git at `~/.local/share/quickshell-scratchpad/scratchpads.json
 first scratchpad on first launch and kept as a backup. The active scratchpad is
 restored on launch. Existing notes automatically load as one point with their
 original text intact. Saves use version 3 of the JSON format, storing an independent title in `name`
-and a `points` array per scratchpad, plus the note list's `browseMode` (`pages` or `scroll`) and the text `fontSize`. The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
+and a `points` array per scratchpad, plus the note list's `browseMode` (`pages` or `scroll`), the text `fontSize`, and the `pointControls` and `zen` toggles. Each scratchpad records its last edit as `updated` (milliseconds since the epoch); notes saved before this field existed count as oldest and keep their previous order. The permanent container has `global: true`; older stores gain an empty Global without changing existing note contents. Version 1 and 2 notes keep all original
 point text when loaded, with their existing first-line title as the initial title. Requires Quickshell, Qt Quick Controls, Python 3, Hyprland
 (Lua config), and flock.
 

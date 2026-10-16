@@ -23,6 +23,11 @@ Scope {
     property int browseCurrent: 0
     property int padsRevision: 0
     property bool previewMode: false
+    // Ctrl+Shift+H hides the per-point ↑ ↓ × and + buttons; Ctrl+H (zen)
+    // hides those and the bottom bar. Both are saved with the notes.
+    property bool pointControls: true
+    property bool zen: false
+    property string toastText: ""
     property bool clearArmed: false
     property bool clearPointsArmed: false
     property var pendingCaptures: []
@@ -46,7 +51,13 @@ Scope {
         if (switching || !ready || activeIndex < 0 || activeGlobal) return;
         activeTitle = text;
         pads.setProperty(activeIndex, "name", text.trim() || "Untitled");
+        touch();
         debounce.restart();
+    }
+
+    // Marks the open note as just edited, moving it to the top of the browser.
+    function touch() {
+        if (activeIndex >= 0 && activeIndex < pads.count) pads.setProperty(activeIndex, "updated", Date.now());
     }
 
     function focusContent() {
@@ -70,6 +81,7 @@ Scope {
     function updatePoint(index, text) {
         if (switching || !ready || activeIndex < 0) return;
         points.setProperty(index, "body", text);
+        touch();
         copied.stop();
         debounce.restart();
     }
@@ -79,6 +91,7 @@ Scope {
         previewMode = false;
         points.append({ body: "" });
         activePoint = points.count - 1;
+        touch();
         save();
         Qt.callLater(focusContent);
     }
@@ -120,6 +133,7 @@ Scope {
         points.clear();
         points.append({ body: "" });
         activePoint = 0;
+        touch();
         copied.stop();
         save();
         Qt.callLater(focusContent);
@@ -129,6 +143,7 @@ Scope {
         if (points.count === 1) points.setProperty(0, "body", "");
         else points.remove(index);
         activePoint = Math.min(index, points.count - 1);
+        touch();
         copied.stop();
         save();
         Qt.callLater(focusContent);
@@ -137,6 +152,7 @@ Scope {
     function movePoint(index, offset) {
         points.move(index, index + offset, 1);
         activePoint = index + offset;
+        touch();
         copied.stop();
         save();
         Qt.callLater(focusContent);
@@ -164,6 +180,15 @@ Scope {
     function copyForAgents() {
         Quickshell.clipboardText = Points.forAgents(pointTexts());
         copied.restart();
+        toast("Copied to clipboard");
+    }
+
+    // Zen hides the buttons that normally confirm an action, so it shows a
+    // brief message at the bottom of the window instead.
+    function toast(text) {
+        if (!zen) return;
+        toastText = text;
+        toastTimer.restart();
     }
 
     function togglePreview() {
@@ -172,16 +197,18 @@ Scope {
         focusContent();
     }
 
-    // Note browser. Rows are recomputed from `pads` only while it is open.
+    // Note browser, newest edit first. Rows are recomputed from `pads` only
+    // while it is open.
     readonly property var browseRows: {
         padsRevision;
         if (!browsing) return [];
         const notes = [];
         for (let i = 0; i < pads.count; i++) {
             const pad = pads.get(i);
-            notes.push({ index: i, name: pad.name, pinned: !!pad.pinned, global: !!pad.global, snippet: NoteList.snippet(pad.text) });
+            notes.push({ index: i, name: pad.name, pinned: !!pad.pinned, global: !!pad.global,
+                         updated: pad.updated, snippet: NoteList.snippet(pad.text) });
         }
-        return NoteList.filter(notes, browseSearch.text);
+        return NoteList.filter(NoteList.order(notes), browseSearch.text);
     }
     readonly property int browsePageShown: NoteList.clampPage(browsePage, browseRows.length)
     readonly property var browseVisible: NoteList.visible(browseRows, browseScroll, browsePageShown, browseLoaded)
@@ -206,6 +233,13 @@ Scope {
         }
     }
 
+    // Selects the row showing pads[index]; false when it isn't listed.
+    function revealBrowseIndex(index) {
+        for (let i = 0; i < browseRows.length; i++)
+            if (browseRows[i].index === index) { revealBrowseRow(i); return true; }
+        return false;
+    }
+
     function browsePosition() {
         return (browseScroll ? 0 : browsePageShown * NoteList.pageSize) + browseCurrent;
     }
@@ -217,9 +251,7 @@ Scope {
         clearArmed = false;
         browseSearch.text = "";
         browsing = true;
-        let position = 0;
-        for (let i = 0; i < browseRows.length; i++) if (browseRows[i].index === activeIndex) position = i;
-        revealBrowseRow(position);
+        if (!revealBrowseIndex(activeIndex)) revealBrowseRow(0);
         focusContent();
     }
 
@@ -287,6 +319,47 @@ Scope {
         if (browseSelected && !browseSelected.global) removePad(browseSelected.index);
     }
 
+    // Ctrl+P pins the highlighted row while browsing, else the open note.
+    function pinNote() {
+        if (!ready) return;
+        if (!browsing) { if (activeIndex >= 0 && !activeGlobal) togglePin(activeIndex); return; }
+        if (browseSelected && !browseSelected.global) togglePin(browseSelected.index);
+    }
+
+    // F2 selects the title for renaming; while browsing it opens the
+    // highlighted note first.
+    function renameNote() {
+        if (!ready) return;
+        if (browsing) {
+            const row = browseSelected;
+            if (!row) return;
+            browsing = false;
+            selectPad(row.index);
+        }
+        if (activeIndex < 0 || activeGlobal) { focusContent(); return; }
+        Qt.callLater(focusTitle, ++titleFocusGeneration);
+    }
+
+    function openGlobal() {
+        if (!ready) return;
+        browsing = false;
+        if (selectPad(globalIndex()) === activeIndex) focusContent();
+    }
+
+    function toggleZen() {
+        zen = !zen;
+        toastTimer.stop();
+        toast("Zen mode · Ctrl+H to exit");
+        save();
+    }
+
+    // From zen, this leaves zen with the point buttons shown.
+    function togglePointControls() {
+        pointControls = zen || !pointControls;
+        zen = false;
+        save();
+    }
+
     function openHelp() {
         if (!helpPopup.opened) helpPopup.open();
     }
@@ -302,6 +375,11 @@ Scope {
         case "newNote": newPad(); break;
         case "deleteNote": deleteNote(); break;
         case "browse": toggleBrowser(); break;
+        case "renameNote": renameNote(); break;
+        case "pinNote": pinNote(); break;
+        case "openGlobal": openGlobal(); break;
+        case "zen": toggleZen(); break;
+        case "pointControls": togglePointControls(); break;
         case "addPoint": addPoint(); break;
         case "previousPoint": focusPoint(-1); break;
         case "nextPoint": focusPoint(1); break;
@@ -324,6 +402,7 @@ Scope {
         const next = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, size));
         if (next === theme.fontSize) return;
         theme.fontSize = next;
+        toast("Text size " + next + " px");
         save();
         Qt.callLater(ensureCursorVisible);
     }
@@ -381,13 +460,15 @@ Scope {
             const pad = pads.get(i);
             if (isBlank(pad.text) && isBlank(pad.name)) continue;
             if (i === activeIndex) storedActive = data.length;
-            data.push({ name: pad.name, points: JSON.parse(pad.pointsJson), pinned: !!pad.pinned, global: !!pad.global });
+            data.push({ name: pad.name, points: JSON.parse(pad.pointsJson), pinned: !!pad.pinned, global: !!pad.global, updated: pad.updated });
         }
         notes.setText(JSON.stringify({
             version: 3,
             activeIndex: data.length ? storedActive : 0,
             browseMode: browseScroll ? "scroll" : "pages",
             fontSize: theme.fontSize,
+            pointControls: pointControls,
+            zen: zen,
             pads: data
         }, null, 2));
     }
@@ -436,7 +517,7 @@ Scope {
             commitActive();
         }
         const title = nextUntitled();
-        pads.append({ name: title, text: "", pointsJson: JSON.stringify([""]), pinned: false, global: false });
+        pads.append({ name: title, text: "", pointsJson: JSON.stringify([""]), pinned: false, global: false, updated: Date.now() });
         showEditor(pads.count - 1, true);
     }
 
@@ -447,6 +528,7 @@ Scope {
         const removingActive = index === activeIndex;
         if (!removingActive)
             commitActive();
+        toast("Deleted “" + (removingActive ? activeTitle.trim() || "Untitled" : pads.get(index).name) + "”");
         pads.remove(index);
         let next = activeIndex;
         if (pads.count === 0) next = -1;
@@ -462,31 +544,17 @@ Scope {
         }
     }
 
-    // Pinned notes stay in a prefix. Move only the one row; the others stay put.
+    // The browser lists pinned notes first, so pinning only flips the flag.
+    // While browsing, the selection follows the note to its new row.
     function togglePin(index) {
         if (!ready || index < 0 || index >= pads.count) return;
         clearArmed = false;
         if (pads.get(index).global) return;
         commitActive();
         pads.setProperty(index, "pinned", !pads.get(index).pinned);
-        let otherPinned = 0;
-        for (let i = 0; i < pads.count; i++) {
-            if (i !== index && pads.get(i).pinned) otherPinned++;
-        }
-        if (otherPinned === index) {
-            save();
-            return;
-        }
-        const pad = pads.get(index);
-        const entry = { name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: !!pad.pinned, global: !!pad.global };
-        pads.remove(index);
-        let active = activeIndex === index ? -1 : activeIndex;
-        if (active > index) active--;
-        pads.insert(otherPinned, entry);
-        if (active < 0) active = otherPinned;
-        else if (active >= otherPinned) active++;
-        activeIndex = active;
+        toast((pads.get(index).pinned ? "Pinned " : "Unpinned ") + "“" + pads.get(index).name + "”");
         save();
+        if (browsing) revealBrowseIndex(index);
     }
 
     // A cleared note is discarded once you leave it, so blanks don't pile up.
@@ -521,7 +589,7 @@ Scope {
         activeTitle = "";
         points.clear();
         copied.stop();
-        pads.append({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true });
+        pads.append({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true, updated: 0 });
         switching = false;
         showEditor(0);
     }
@@ -546,8 +614,8 @@ Scope {
         } else focusContent();
     }
 
-    // All notes, in browser order. Titles are updated in place so typing never
-    // rebuilds the list's delegates.
+    // All notes; the browser sorts them by pin and last edit (`updated`, in ms).
+    // Titles are updated in place so typing never rebuilds the list's delegates.
     ListModel { id: pads }
     Connections {
         target: pads
@@ -590,6 +658,7 @@ Scope {
                         text: content,
                         pointsJson: JSON.stringify(entries),
                         pinned: p.global === true || p.pinned === true,
+                        updated: Number.isFinite(p.updated) ? p.updated : 0,
                         sourceIndex: i
                     };
                     if (pad.global) globals.push(pad);
@@ -597,18 +666,20 @@ Scope {
                     else rest.push(pad);
                 }
                 if (globals.length > 1) throw new Error("Multiple global containers");
-                if (!globals.length) globals.push({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true, sourceIndex: -2 });
+                if (!globals.length) globals.push({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true, updated: 0, sourceIndex: -2 });
                 const ordered = globals.concat(pinned, rest);
                 pads.clear();
                 let active = -1;
                 for (let i = 0; i < ordered.length; i++) {
                     const pad = ordered[i];
-                    pads.append({ name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: pad.pinned, global: pad.global });
+                    pads.append({ name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: pad.pinned, global: pad.global, updated: pad.updated });
                     if (pad.sourceIndex === activeSource) active = i;
                 }
                 if (active < 0 && pads.count > 0) active = 0;
                 root.activeIndex = active;
                 root.browseScroll = data.browseMode === "scroll";
+                root.pointControls = data.pointControls !== false;
+                root.zen = data.zen === true;
                 if (Number.isInteger(data.fontSize))
                     theme.fontSize = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, data.fontSize));
                 root.activeTitle = active >= 0 ? pads.get(active).name : "";
@@ -637,6 +708,11 @@ Scope {
         id: debounce
         interval: 300
         onTriggered: root.save()
+    }
+
+    Timer {
+        id: toastTimer
+        interval: 1800
     }
 
     Timer {
@@ -700,6 +776,41 @@ Scope {
             sequence: "Ctrl+B"
             context: Qt.WindowShortcut
             onActivated: root.toggleBrowser()
+        }
+
+        Shortcut {
+            sequence: "F2"
+            context: Qt.WindowShortcut
+            enabled: root.ready && (root.browsing ? root.browseSelected !== null && !root.browseSelected.global
+                                                  : root.activeIndex >= 0 && !root.activeGlobal)
+            onActivated: root.renameNote()
+        }
+
+        Shortcut {
+            sequence: "Ctrl+P"
+            context: Qt.WindowShortcut
+            enabled: root.ready && (root.browsing ? root.browseSelected !== null && !root.browseSelected.global
+                                                  : root.activeIndex >= 0 && !root.activeGlobal)
+            onActivated: root.pinNote()
+        }
+
+        Shortcut {
+            sequence: "Ctrl+G"
+            context: Qt.WindowShortcut
+            enabled: root.ready
+            onActivated: root.openGlobal()
+        }
+
+        Shortcut {
+            sequence: "Ctrl+H"
+            context: Qt.WindowShortcut
+            onActivated: root.toggleZen()
+        }
+
+        Shortcut {
+            sequence: "Ctrl+Shift+H"
+            context: Qt.WindowShortcut
+            onActivated: root.togglePointControls()
         }
 
         Shortcut {
@@ -1042,6 +1153,7 @@ Scope {
                                 pointCount: points.count
                                 source: body
                                 previewMode: root.previewMode
+                                showControls: root.pointControls && !root.zen
                                 onEdited: text => root.updatePoint(index, text)
                                 onFocused: root.activePoint = index
                                 onCaretMoved: Qt.callLater(root.ensureCursorVisible)
@@ -1052,6 +1164,7 @@ Scope {
                         PointButton {
                             colors: theme
                             anchors.right: parent.right
+                            visible: root.pointControls && !root.zen
                             text: "+"
                             Accessible.name: "Add point"
                             enabled: root.ready && root.activeIndex >= 0
@@ -1069,6 +1182,7 @@ Scope {
                 }
                 RowLayout {
                     Layout.fillWidth: true
+                    visible: !root.zen
                     spacing: 3
                     PointButton {
                         colors: theme
@@ -1089,6 +1203,20 @@ Scope {
                         tooltip: "Keyboard shortcuts (F1)"
                         Accessible.name: "Keyboard shortcuts"
                         onClicked: root.openHelp()
+                    }
+                    PointButton {
+                        colors: theme
+                        text: "⇅"
+                        checked: root.pointControls
+                        tooltip: (root.pointControls ? "Hide" : "Show") + " point buttons (Ctrl+Shift+H)"
+                        Accessible.name: "Point buttons"
+                        onClicked: root.togglePointControls()
+                    }
+                    PointButton {
+                        colors: theme
+                        text: "Zen"
+                        tooltip: "Hide all buttons (Ctrl+H)"
+                        onClicked: root.toggleZen()
                     }
                     Item { Layout.fillWidth: true }
                     PointButton {
@@ -1268,6 +1396,36 @@ Scope {
                 text: root.errorMessage
                 color: theme.muted
                 font.pixelSize: theme.px(11)
+            }
+        }
+
+        // Zen-mode feedback (see root.toast). Has no mouse handling, so
+        // clicks pass through to the points underneath.
+        Rectangle {
+            id: toastBox
+            objectName: "toast"
+            visible: toastTimer.running && root.zen
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 12
+            width: Math.min(parent.width - 24, toastLabel.implicitWidth + 20)
+            height: toastLabel.implicitHeight + 10
+            color: theme.surface
+            border.color: theme.accent
+            border.width: 1
+            radius: 0
+            Text {
+                id: toastLabel
+                anchors.fill: parent
+                anchors.margins: 5
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                text: root.toastText
+                color: theme.foreground
+                font.pixelSize: theme.px(12)
+                elide: Text.ElideMiddle
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
             }
         }
     }

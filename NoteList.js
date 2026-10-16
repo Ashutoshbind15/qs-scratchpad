@@ -4,30 +4,32 @@
 // one page at a time or as an infinite scroll that loads a page at a time.
 var pageSize = 20;
 
-// Rank of `title` for `query`, or -1 when some term is missing. Every term
-// must appear in the title; then a title prefix beats a word prefix, which
-// beats a match inside a word. Ties keep the list order.
-function score(title, query) {
+// Global first, then pinned notes, then the rest; within each group the most
+// recently edited note comes first. Equal timestamps keep the given order.
+function order(notes) {
+    function group(note) { return note.global ? 0 : note.pinned ? 1 : 2; }
+    return notes.map(function(note, i) { return { note: note, order: i }; })
+        .sort(function(a, b) {
+            return group(a.note) - group(b.note) || (b.note.updated || 0) - (a.note.updated || 0) || a.order - b.order;
+        })
+        .map(function(entry) { return entry.note; });
+}
+
+// True when every term of `query` appears in `title`, ignoring case.
+function matches(title, query) {
     var q = String(query || "").toLowerCase().trim();
-    if (!q) return 0;
+    if (!q) return true;
     var t = String(title).toLowerCase();
     var terms = q.split(/\s+/);
     for (var i = 0; i < terms.length; i++)
-        if (t.indexOf(terms[i]) < 0) return -1;
-    if (t.indexOf(q) === 0) return 3;
-    if ((" " + t.replace(/[^a-z0-9]+/g, " ")).indexOf(" " + terms[0]) >= 0) return 2;
-    return 1;
+        if (t.indexOf(terms[i]) < 0) return false;
+    return true;
 }
 
-// `notes` is [{ name, ... }] in display order; returns the matching notes.
+// `notes` is [{ name, ... }] in display order; returns the matching notes,
+// keeping that order so search results stay newest first.
 function filter(notes, query) {
-    var matches = [];
-    for (var i = 0; i < notes.length; i++) {
-        var value = score(notes[i].name, query);
-        if (value >= 0) matches.push({ note: notes[i], score: value, order: i });
-    }
-    matches.sort(function(a, b) { return b.score - a.score || a.order - b.order; });
-    return matches.map(function(match) { return match.note; });
+    return notes.filter(function(note) { return matches(note.name, query); });
 }
 
 function pageCount(total) {

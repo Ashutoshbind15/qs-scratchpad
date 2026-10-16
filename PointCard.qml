@@ -9,6 +9,7 @@ Rectangle {
     required property int pointCount
     property string source: ""
     property bool previewMode: false
+    property bool showControls: true
     property alias editor: input
     function focusContent() {
         if (previewMode) {
@@ -34,6 +35,7 @@ Rectangle {
         spacing: 3
         RowLayout {
             Layout.fillWidth: true
+            visible: card.showControls
             spacing: 2
             Item { Layout.fillWidth: true }
             PointButton {
