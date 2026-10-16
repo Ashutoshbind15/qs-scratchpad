@@ -6,41 +6,54 @@ import Quickshell.Io
 import "ScratchpadPoints.js" as Points
 import "Keybinds.js" as Keybinds
 import "NoteList.js" as NoteList
+import "NoteStore.js" as NoteStore
 
 Scope {
     id: root
     ScratchpadTheme { id: theme }
 
+    // Loading
     property bool ready: false
     property string errorMessage: ""
+    // Super+A presses that arrive before the notes finish loading.
+    property var pendingCaptures: []
 
+    // The open note. `pads` holds every note; `points` holds the open note's
+    // points while it's being edited (see showEditor and commitActive).
     property int activeIndex: 0
+    property string activeTitle: ""
+    property int activePoint: 0
     property bool switching: false
+    property int titleFocusGeneration: 0
+    readonly property bool activeGlobal: activeIndex >= 0 && pads.count > activeIndex && pads.get(activeIndex).global
+    readonly property bool editing: ready && activeIndex >= 0 && !browsing
+    readonly property bool hasPointText: !isBlank(Points.combined(pointTexts()))
+    readonly property var editor: pointRepeater.count > activePoint && pointRepeater.itemAt(activePoint)
+                                  ? pointRepeater.itemAt(activePoint).editor : null
+
+    // Note browser (Ctrl+B)
     property bool browsing: false
     property bool browseScroll: false
     property int browsePage: 0
     property int browseLoaded: NoteList.pageSize
     property int browseCurrent: 0
     property int padsRevision: 0
+    // Ctrl+W, Ctrl+P and F2 act on the highlighted row while browsing.
+    readonly property bool canActOnNote: ready && (browsing ? browseSelected !== null && !browseSelected.global
+                                                            : activeIndex >= 0 && !activeGlobal)
+
+    // View settings, saved with the notes. Ctrl+Shift+H hides the per-point
+    // ↑ ↓ × and + buttons; Ctrl+H (zen) hides those and the bottom bar.
+    // Ctrl+Down / Ctrl+Up switch to a short window; Hyprland applies the size.
     property bool previewMode: false
-    // Ctrl+Shift+H hides the per-point ↑ ↓ × and + buttons; Ctrl+H (zen)
-    // hides those and the bottom bar. Both are saved with the notes.
     property bool pointControls: true
     property bool zen: false
-    // Ctrl+Down / Ctrl+Up switch between a short window for quick notes and
-    // the full-height one. Hyprland applies the size (see omarchy.lua).
     property bool shortWindow: false
-    property string toastText: ""
+
+    // Two-step confirmations and zen-mode feedback
     property bool clearArmed: false
     property bool clearPointsArmed: false
-    property var pendingCaptures: []
-    property bool activeGlobal: activeIndex >= 0 && pads.count > activeIndex && pads.get(activeIndex).global
-    property int titleFocusGeneration: 0
-
-    property string activeTitle: ""
-    property int activePoint: 0
-    property bool editing: ready && activeIndex >= 0 && !browsing
-    property var editor: pointRepeater.count > activePoint && pointRepeater.itemAt(activePoint) ? pointRepeater.itemAt(activePoint).editor : null
+    property string toastText: ""
 
     function pointTexts() {
         const result = [];
@@ -53,7 +66,7 @@ Scope {
     function updateTitle(text) {
         if (switching || !ready || activeIndex < 0 || activeGlobal) return;
         activeTitle = text;
-        pads.setProperty(activeIndex, "name", text.trim() || "Untitled");
+        pads.setProperty(activeIndex, "name", text.trim() || NoteStore.UNTITLED_NAME);
         touch();
         debounce.restart();
     }
@@ -384,9 +397,8 @@ Scope {
 
     // Runs a help-overlay entry; each action keeps its shortcut's guards.
     function runBinding(action) {
-        const hasText = !isBlank(Points.combined(pointTexts()));
-        if (browsing && ["addPoint", "previousPoint", "nextPoint", "movePointUp", "movePointDown",
-                         "deletePoint", "clearPoints", "copy", "preview"].indexOf(action) >= 0)
+        // Point actions apply to the open note, so they leave the browser first.
+        if (browsing && Keybinds.section(action) === "Points")
             browsing = false;
         switch (action) {
         case "help": openHelp(); break;
@@ -404,10 +416,10 @@ Scope {
         case "movePointUp": reorderPoint(-1); break;
         case "movePointDown": reorderPoint(1); break;
         case "deletePoint": deletePoint(); break;
-        case "clearPoints": if (hasText) armClearPoints(); break;
+        case "clearPoints": if (hasPointText) armClearPoints(); break;
         case "shortWindow": setShortWindow(true); break;
         case "tallWindow": setShortWindow(false); break;
-        case "copy": if (ready && activeIndex >= 0 && hasText) copyForAgents(); break;
+        case "copy": if (ready && activeIndex >= 0 && hasPointText) copyForAgents(); break;
         case "preview": togglePreview(); break;
         case "zoomIn": zoom(1); break;
         case "zoomOut": zoom(-1); break;
@@ -429,7 +441,7 @@ Scope {
     }
 
     function isBlank(text) {
-        return text.trim().length === 0;
+        return Points.isBlank(text);
     }
 
     function commitActive() {
@@ -437,7 +449,7 @@ Scope {
         const entries = pointTexts();
         pads.setProperty(activeIndex, "text", Points.combined(entries));
         pads.setProperty(activeIndex, "pointsJson", JSON.stringify(entries));
-        pads.setProperty(activeIndex, "name", activeTitle.trim() || "Untitled");
+        pads.setProperty(activeIndex, "name", activeTitle.trim() || NoteStore.UNTITLED_NAME);
     }
 
     // Swap the editor without touching the notes model, so opening a note
@@ -475,24 +487,47 @@ Scope {
         if (!ready || switching) return;
         debounce.stop();
         commitActive();
-        const data = [];
-        let storedActive = 0;
-        for (let i = 0; i < pads.count; i++) {
-            const pad = pads.get(i);
-            if (isBlank(pad.text) && isBlank(pad.name)) continue;
-            if (i === activeIndex) storedActive = data.length;
-            data.push({ name: pad.name, points: JSON.parse(pad.pointsJson), pinned: !!pad.pinned, global: !!pad.global, updated: pad.updated });
-        }
-        notes.setText(JSON.stringify({
-            version: 3,
-            activeIndex: data.length ? storedActive : 0,
-            browseMode: browseScroll ? "scroll" : "pages",
+        const rows = [];
+        for (let i = 0; i < pads.count; i++) rows.push(pads.get(i));
+        notes.setText(NoteStore.serialize(rows, {
+            activeIndex: activeIndex,
+            browseScroll: browseScroll,
             fontSize: theme.fontSize,
             pointControls: pointControls,
             zen: zen,
-            shortWindow: shortWindow,
-            pads: data
-        }, null, 2));
+            shortWindow: shortWindow
+        }));
+    }
+
+    // Loads parsed notes and settings, then replays any early captures.
+    function applyStore(store) {
+        pads.clear();
+        for (const note of store.notes) pads.append(note);
+        activeIndex = store.activeIndex;
+
+        const settings = store.settings;
+        browseScroll = settings.browseScroll;
+        pointControls = settings.pointControls;
+        zen = settings.zen;
+        shortWindow = settings.shortWindow;
+        if (shortWindow && window.backingWindowVisible) applyWindowSize();
+        if (settings.fontSize !== null)
+            theme.fontSize = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, settings.fontSize));
+
+        activeTitle = pads.get(activeIndex).name;
+        points.clear();
+        for (const body of JSON.parse(pads.get(activeIndex).pointsJson))
+            points.append({ body: body });
+
+        ready = true;
+        errorMessage = "";
+        if (!pendingCaptures.length) {
+            Qt.callLater(focusContent);
+            return;
+        }
+        const captures = pendingCaptures;
+        pendingCaptures = [];
+        for (const body of captures) captureGlobal(body);
     }
 
     function selectPad(index) {
@@ -538,8 +573,7 @@ Scope {
         } else if (activeIndex >= 0) {
             commitActive();
         }
-        const title = nextUntitled();
-        pads.append({ name: title, text: "", pointsJson: JSON.stringify([""]), pinned: false, global: false, updated: Date.now() });
+        pads.append(NoteStore.newNote(nextUntitled()));
         showEditor(pads.count - 1, true);
     }
 
@@ -550,7 +584,7 @@ Scope {
         const removingActive = index === activeIndex;
         if (!removingActive)
             commitActive();
-        toast("Deleted “" + (removingActive ? activeTitle.trim() || "Untitled" : pads.get(index).name) + "”");
+        toast("Deleted “" + (removingActive ? activeTitle.trim() || NoteStore.UNTITLED_NAME : pads.get(index).name) + "”");
         pads.remove(index);
         let next = activeIndex;
         if (pads.count === 0) next = -1;
@@ -611,7 +645,7 @@ Scope {
         activeTitle = "";
         points.clear();
         copied.stop();
-        pads.append({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true, updated: 0 });
+        pads.append(NoteStore.globalNote());
         switching = false;
         showEditor(0);
     }
@@ -648,6 +682,7 @@ Scope {
         function onModelReset() { root.padsRevision++; }
     }
     ListModel { id: points }
+    // How long the Copy button reads "Copied!".
     Timer { id: copied; interval: 1500 }
 
     FileView {
@@ -658,67 +693,7 @@ Scope {
         atomicWrites: true
         onLoaded: {
             try {
-                const data = JSON.parse(text());
-                if ((data.version !== 1 && data.version !== 2 && data.version !== 3) || !Array.isArray(data.pads))
-                    throw new Error("Invalid scratchpad data");
-                const globals = [];
-                const pinned = [];
-                const rest = [];
-                const activeSource = Number.isInteger(data.activeIndex) ? data.activeIndex : -1;
-                for (let i = 0; i < data.pads.length; i++) {
-                    const p = data.pads[i];
-                    if (typeof p.name !== "string"
-                            || (p.pinned !== undefined && typeof p.pinned !== "boolean")
-                            || (p.global !== undefined && typeof p.global !== "boolean"))
-                        throw new Error("Invalid scratchpad data");
-                    const entries = Points.readPoints(p, data.version);
-                    const content = Points.combined(entries);
-                    if (!p.global && root.isBlank(content) && (data.version < 3 || root.isBlank(p.name))) continue;
-                    const pad = {
-                        name: p.global ? "Global" : data.version === 3 ? p.name : Points.title(entries),
-                        global: p.global === true,
-                        text: content,
-                        pointsJson: JSON.stringify(entries),
-                        pinned: p.global === true || p.pinned === true,
-                        updated: Number.isFinite(p.updated) ? p.updated : 0,
-                        sourceIndex: i
-                    };
-                    if (pad.global) globals.push(pad);
-                    else if (pad.pinned) pinned.push(pad);
-                    else rest.push(pad);
-                }
-                if (globals.length > 1) throw new Error("Multiple global containers");
-                if (!globals.length) globals.push({ name: "Global", text: "", pointsJson: JSON.stringify([""]), pinned: true, global: true, updated: 0, sourceIndex: -2 });
-                const ordered = globals.concat(pinned, rest);
-                pads.clear();
-                let active = -1;
-                for (let i = 0; i < ordered.length; i++) {
-                    const pad = ordered[i];
-                    pads.append({ name: pad.name, text: pad.text, pointsJson: pad.pointsJson, pinned: pad.pinned, global: pad.global, updated: pad.updated });
-                    if (pad.sourceIndex === activeSource) active = i;
-                }
-                if (active < 0 && pads.count > 0) active = 0;
-                root.activeIndex = active;
-                root.browseScroll = data.browseMode === "scroll";
-                root.pointControls = data.pointControls !== false;
-                root.zen = data.zen === true;
-                root.shortWindow = data.shortWindow === true;
-                if (root.shortWindow && window.backingWindowVisible) root.applyWindowSize();
-                if (Number.isInteger(data.fontSize))
-                    theme.fontSize = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, data.fontSize));
-                root.activeTitle = active >= 0 ? pads.get(active).name : "";
-                points.clear();
-                if (active >= 0) {
-                    for (const body of JSON.parse(pads.get(active).pointsJson))
-                        points.append({ body: body });
-                }
-                root.ready = true;
-                root.errorMessage = "";
-                if (root.pendingCaptures.length) {
-                    const captures = root.pendingCaptures;
-                    root.pendingCaptures = [];
-                    for (const body of captures) root.captureGlobal(body);
-                } else Qt.callLater(root.focusContent);
+                root.applyStore(NoteStore.parse(text()));
             } catch (error) {
                 root.errorMessage = "Unable to load notes — " + error.message;
             }
@@ -728,6 +703,7 @@ Scope {
         onSaveFailed: root.errorMessage = "Save failed — keep this window open"
     }
 
+    // Autosave after typing pauses.
     Timer {
         id: debounce
         interval: 300
@@ -739,6 +715,7 @@ Scope {
         interval: 1800
     }
 
+    // Window for the second click of "Clear all" / "Clear points".
     Timer {
         id: clearArm
         interval: 2500
@@ -751,7 +728,7 @@ Scope {
         onTriggered: root.clearPointsArmed = false
     }
 
-    // Used by `toggle start` to re-create the window if it was closed.
+    // Called by `toggle` (ping, reveal) and `capture` from outside the process.
     IpcHandler {
         target: "scratchpad"
         function ping(): void {}
@@ -793,8 +770,7 @@ Scope {
         Shortcut {
             sequence: "Ctrl+W"
             context: Qt.WindowShortcut
-            enabled: root.ready && (root.browsing ? root.browseSelected !== null && !root.browseSelected.global
-                                                  : root.activeIndex >= 0 && !root.activeGlobal)
+            enabled: root.canActOnNote
             onActivated: root.deleteNote()
         }
 
@@ -807,16 +783,14 @@ Scope {
         Shortcut {
             sequence: "F2"
             context: Qt.WindowShortcut
-            enabled: root.ready && (root.browsing ? root.browseSelected !== null && !root.browseSelected.global
-                                                  : root.activeIndex >= 0 && !root.activeGlobal)
+            enabled: root.canActOnNote
             onActivated: root.renameNote()
         }
 
         Shortcut {
             sequence: "Ctrl+P"
             context: Qt.WindowShortcut
-            enabled: root.ready && (root.browsing ? root.browseSelected !== null && !root.browseSelected.global
-                                                  : root.activeIndex >= 0 && !root.activeGlobal)
+            enabled: root.canActOnNote
             onActivated: root.pinNote()
         }
 
@@ -890,7 +864,7 @@ Scope {
         Shortcut {
             sequence: "Ctrl+Shift+Backspace"
             context: Qt.WindowShortcut
-            enabled: root.editing && !root.isBlank(Points.combined(root.pointTexts()))
+            enabled: root.editing && root.hasPointText
             onActivated: root.armClearPoints()
         }
 
@@ -909,7 +883,7 @@ Scope {
         Shortcut {
             sequence: "Ctrl+Shift+C"
             context: Qt.WindowShortcut
-            enabled: root.editing && !root.isBlank(Points.combined(root.pointTexts()))
+            enabled: root.editing && root.hasPointText
             onActivated: root.copyForAgents()
         }
 
@@ -945,145 +919,11 @@ Scope {
             onActivated: root.browsing ? root.browseEscape() : root.hideScratchpad()
         }
 
-        // Searchable list of shortcuts, styled after Omarchy's keybindings
-        // menu: type to filter, Up/Down to pick, Enter to run, Escape clears
-        // the search and then closes. Modal, so window shortcuts stay inactive.
-        Popup {
+        ShortcutHelp {
             id: helpPopup
-            property var rows: Keybinds.filter(helpSearch.text)
-            x: 4
-            y: 4
-            width: window.width - 8
-            height: window.height - 8
-            modal: true
-            dim: false
-            padding: 4
-            closePolicy: Popup.NoAutoClose
-            onRowsChanged: helpList.currentIndex = Keybinds.bestIndex(rows)
-            onOpened: {
-                helpSearch.text = "";
-                helpList.currentIndex = Keybinds.bestIndex(rows);
-                helpSearch.forceActiveFocus();
-            }
+            colors: theme
             onClosed: root.focusContent()
-
-            function run(index) {
-                if (index < 0 || index >= rows.length) return;
-                const action = rows[index].action;
-                close();
-                if (action !== "help") Qt.callLater(root.runBinding, action);
-            }
-
-            function move(offset) {
-                if (!rows.length) return;
-                helpList.currentIndex = Math.max(0, Math.min(rows.length - 1, helpList.currentIndex + offset));
-            }
-
-            background: Rectangle {
-                color: theme.background
-                border.color: theme.border
-                border.width: 1
-                radius: 0
-            }
-
-            contentItem: ColumnLayout {
-                spacing: 4
-                TextField {
-                    id: helpSearch
-                    Layout.fillWidth: true
-                    placeholderText: "Search shortcuts…"
-                    color: theme.foreground
-                    selectionColor: theme.textSelection
-                    selectedTextColor: theme.selectedText
-                    placeholderTextColor: theme.muted
-                    font.pixelSize: theme.px(13)
-                    padding: 4
-                    background: Rectangle {
-                        color: theme.surface
-                        Rectangle {
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: 1
-                            color: helpSearch.activeFocus ? theme.accent : theme.border
-                        }
-                    }
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Escape) {
-                            if (text) text = "";
-                            else helpPopup.close();
-                        } else if (event.key === Qt.Key_F1) helpPopup.close();
-                        else if (event.key === Qt.Key_Up) helpPopup.move(-1);
-                        else if (event.key === Qt.Key_Down) helpPopup.move(1);
-                        else if (event.key === Qt.Key_PageUp) helpPopup.move(-6);
-                        else if (event.key === Qt.Key_PageDown) helpPopup.move(6);
-                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) helpPopup.run(helpList.currentIndex);
-                        else return;
-                        event.accepted = true;
-                    }
-                }
-                ListView {
-                    id: helpList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    spacing: 2
-                    model: helpPopup.rows
-                    boundsBehavior: Flickable.StopAtBounds
-                    highlightMoveDuration: 0
-                    section.property: "section"
-                    section.delegate: Text {
-                        required property string section
-                        width: ListView.view.width
-                        topPadding: 6
-                        bottomPadding: 2
-                        leftPadding: 6
-                        text: section.toUpperCase()
-                        color: theme.accent
-                        font.pixelSize: theme.px(10)
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
-                    delegate: ItemDelegate {
-                        id: helpRow
-                        required property var modelData
-                        required property int index
-                        width: ListView.view.width
-                        height: theme.px(26)
-                        padding: 0
-                        onClicked: helpPopup.run(index)
-                        contentItem: RowLayout {
-                            spacing: 8
-                            Text {
-                                Layout.fillWidth: true
-                                leftPadding: 6
-                                text: helpRow.modelData.label
-                                color: theme.foreground
-                                elide: Text.ElideRight
-                                font.pixelSize: theme.px(12)
-                            }
-                            Text {
-                                rightPadding: 6
-                                text: helpRow.modelData.keys
-                                color: helpRow.index === helpList.currentIndex ? theme.foreground : theme.muted
-                                font.pixelSize: theme.px(11)
-                                font.family: "monospace"
-                            }
-                        }
-                        background: Rectangle {
-                            color: helpRow.index === helpList.currentIndex ? theme.selection
-                                    : helpRow.hovered ? theme.hover : "transparent"
-                            radius: 0
-                        }
-                    }
-                    ScrollBar.vertical: ScrollBar {}
-                }
-                Label {
-                    visible: helpPopup.rows.length === 0
-                    text: "No matching shortcuts"
-                    color: theme.muted
-                    font.pixelSize: theme.px(12)
-                }
-            }
+            onActionRequested: action => Qt.callLater(root.runBinding, action)
         }
 
         Menu {
@@ -1102,41 +942,17 @@ Scope {
                 border.width: 1
             }
 
-            MenuItem {
-                id: pinAction
+            ScratchpadMenuItem {
+                colors: theme
                 enabled: !padMenu.global
                 text: padMenu.pinText
-                implicitHeight: theme.px(28)
                 onTriggered: root.togglePin(padMenu.target)
-                contentItem: Text {
-                    text: pinAction.text
-                    color: theme.foreground
-                    font.pixelSize: theme.px(12)
-                    leftPadding: 6
-                    verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    color: pinAction.highlighted ? theme.selection : "transparent"
-                    radius: 0
-                }
             }
-            MenuItem {
-                id: deleteAction
+            ScratchpadMenuItem {
+                colors: theme
                 enabled: !padMenu.global
                 text: "Delete"
-                implicitHeight: theme.px(28)
                 onTriggered: root.removePad(padMenu.target)
-                contentItem: Text {
-                    text: deleteAction.text
-                    color: theme.foreground
-                    font.pixelSize: theme.px(12)
-                    leftPadding: 6
-                    verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    color: deleteAction.highlighted ? theme.selection : "transparent"
-                    radius: 0
-                }
             }
         }
 
@@ -1149,32 +965,19 @@ Scope {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 4
-                TextField {
+                ScratchpadTextField {
                     id: titleInput
                     Layout.fillWidth: true
+                    colors: theme
                     visible: root.activeIndex >= 0
                     enabled: root.ready
                     readOnly: root.activeGlobal
                     text: root.activeTitle
                     placeholderText: "Title"
-                    color: theme.foreground
-                    selectionColor: theme.textSelection
-                    selectedTextColor: theme.selectedText
-                    placeholderTextColor: theme.muted
                     font.pixelSize: theme.px(16)
                     font.bold: true
-                    padding: 4
                     onTextEdited: root.updateTitle(text)
                     onAccepted: root.focusContent()
-                    background: Rectangle {
-                        color: theme.surface
-                        Rectangle {
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: 1
-                            color: titleInput.activeFocus ? theme.accent : theme.border
-                        }
-                    }
                 }
                 ScrollView {
                     id: pointScroll
@@ -1240,7 +1043,7 @@ Scope {
                         colors: theme
                         text: root.clearPointsArmed ? "Sure?" : "Clear points"
                         tooltip: "Remove every point (Ctrl+Shift+Backspace twice)"
-                        enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
+                        enabled: root.ready && root.activeIndex >= 0 && root.hasPointText
                         onClicked: root.armClearPoints()
                     }
                     PointButton {
@@ -1281,7 +1084,7 @@ Scope {
                     PointButton {
                         colors: theme
                         text: copied.running ? "Copied!" : "Copy"
-                        enabled: root.ready && root.activeIndex >= 0 && !root.isBlank(Points.combined(root.pointTexts()))
+                        enabled: root.ready && root.activeIndex >= 0 && root.hasPointText
                         onClicked: root.copyForAgents()
                     }
                 }
@@ -1293,26 +1096,12 @@ Scope {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 4
-                TextField {
+                ScratchpadTextField {
                     id: browseSearch
                     Layout.fillWidth: true
+                    colors: theme
                     placeholderText: "Search notes by title…"
-                    color: theme.foreground
-                    selectionColor: theme.textSelection
-                    selectedTextColor: theme.selectedText
-                    placeholderTextColor: theme.muted
-                    font.pixelSize: theme.px(13)
-                    padding: 4
                     onTextChanged: root.browseQueryChanged()
-                    background: Rectangle {
-                        color: theme.surface
-                        Rectangle {
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: 1
-                            color: browseSearch.activeFocus ? theme.accent : theme.border
-                        }
-                    }
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Up) root.browseMove(-1);
                         else if (event.key === Qt.Key_Down) root.browseMove(1);
@@ -1452,34 +1241,12 @@ Scope {
             }
         }
 
-        // Zen-mode feedback (see root.toast). Has no mouse handling, so
-        // clicks pass through to the points underneath.
-        Rectangle {
-            id: toastBox
+        // Zen-mode feedback (see root.toast).
+        ScratchpadToast {
             objectName: "toast"
+            colors: theme
             visible: toastTimer.running && root.zen
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 12
-            width: Math.min(parent.width - 24, toastLabel.implicitWidth + 20)
-            height: toastLabel.implicitHeight + 10
-            color: theme.surface
-            border.color: theme.accent
-            border.width: 1
-            radius: 0
-            Text {
-                id: toastLabel
-                anchors.fill: parent
-                anchors.margins: 5
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                text: root.toastText
-                color: theme.foreground
-                font.pixelSize: theme.px(12)
-                elide: Text.ElideMiddle
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
+            text: root.toastText
         }
     }
 }

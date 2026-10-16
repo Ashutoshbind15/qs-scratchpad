@@ -2,15 +2,19 @@
 # Always append to Global, regardless of the currently selected note.
 set -euo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ipc_timeout=0.75s
+# An unresponsive application gets an empty point rather than delaying the shortcut.
+selection_timeout=0.2s
+
 # Read PRIMARY before revealing the scratchpad changes the focused application.
 # Keep trailing newlines with a sentinel; never fall back to stale clipboard text.
-selected_text="$(timeout 0.2s wl-paste --primary --type text --no-newline 2>/dev/null && printf '.')" || selected_text='.'
+selected_text="$(timeout "$selection_timeout" wl-paste --primary --type text --no-newline 2>/dev/null && printf '.')" || selected_text='.'
 selected_text="${selected_text%.}"
 # Healthy presses need only one IPC request. Starting/revealing first adds a
 # second Qt client, takes the startup lock, and polls Hyprland unnecessarily.
-if ! timeout 0.75s quickshell ipc -p "$repo_dir" call -- scratchpad capture "$selected_text" >/dev/null 2>&1; then
+if ! timeout "$ipc_timeout" quickshell ipc -p "$repo_dir" call -- scratchpad capture "$selected_text" >/dev/null 2>&1; then
     "$repo_dir/toggle" start
-    timeout 0.75s quickshell ipc -p "$repo_dir" call -- scratchpad capture "$selected_text" >/dev/null
+    timeout "$ipc_timeout" quickshell ipc -p "$repo_dir" call -- scratchpad capture "$selected_text" >/dev/null
 fi
 # The first capture of a preloaded instance can return before Wayland maps its
 # surface. Only that case needs the map wait; never poll on healthy warm presses.

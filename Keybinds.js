@@ -37,6 +37,13 @@ var entries = [
     { section: "Anywhere", action: "capture", label: "Capture to Global", sequences: ["Super+A"], keywords: "selection primary add point" }
 ];
 
+// Section of the first entry bound to `action`, or "" when none is.
+function section(action) {
+    for (var i = 0; i < entries.length; i++)
+        if (entries[i].action === action) return entries[i].section;
+    return "";
+}
+
 // Omarchy's notation: "SUPER SHIFT + F".
 function formatSequence(sequence) {
     var parts = String(sequence).split("+");

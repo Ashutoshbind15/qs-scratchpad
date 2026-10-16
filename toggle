@@ -4,6 +4,7 @@
 # initializes Qt and loads notes at login without showing a window.
 set -euo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ipc_timeout=0.75s
 
 mode="${1:-toggle}"
 if [[ "$mode" != start && "$mode" != prewarm ]]; then
@@ -30,7 +31,7 @@ fi
 
 if [[ "$mode" == prewarm ]]; then
     # Never reveal an existing window or change focus during login/reloads.
-    if timeout 0.75s quickshell ipc -p "$repo_dir" call scratchpad ping >/dev/null 2>&1; then
+    if timeout "$ipc_timeout" quickshell ipc -p "$repo_dir" call scratchpad ping >/dev/null 2>&1; then
         exit 0
     fi
     export SCRATCHPAD_PREWARM=1
@@ -46,10 +47,10 @@ window_mapped() {
 }
 
 # A running instance whose window was closed just needs it re-created.
-if timeout 0.75s quickshell ipc -p "$repo_dir" call scratchpad reveal >/dev/null 2>&1; then
+if timeout "$ipc_timeout" quickshell ipc -p "$repo_dir" call scratchpad reveal >/dev/null 2>&1; then
     window_mapped && exit 0
-    # It answered IPC but never mapped a window: its render side is wedged
-    # (seen 2026-10-15). Restart it rather than failing on every press.
+    # It answered IPC but never mapped a window: its render side is wedged.
+    # Restart it rather than failing on every press.
     echo "Scratchpad window did not map; restarting wedged instance" >&2
 fi
 # A hung instance can also stop answering IPC entirely. --no-duplicate alone

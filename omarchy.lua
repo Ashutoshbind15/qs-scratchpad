@@ -1,16 +1,28 @@
--- Sourced by ~/.config/hypr/hyprland.lua via dofile().
+-- Sourced by ~/.config/hypr/hyprland.lua via dofile("<repo>/omarchy.lua").
 --
 -- The window stays mapped and is parked on a silent special workspace while
 -- hidden. Showing it is a single move + focus inside Hyprland: no process
 -- spawn, no Qt surface creation, and no open animation.
-local repo = "/home/ash/projects/quickshell-scratchpad"
+
+-- The scripts live next to this file, wherever the repo was cloned.
+local repo = debug.getinfo(1, "S").source:match("^@(.+)/[^/]+$")
+assert(repo, "quickshell-scratchpad: load omarchy.lua with dofile() and an absolute path")
+
 local hidden = "special:quickshell-scratchpad"
+local window_match = { class = "org.quickshell", title = "Scratchpad" }
+
+-- Fractions of the monitor, plus the gap to its right and bottom edges.
+local layout = { width = 0.25, tall = 0.75, short = 0.3, right_gap = 32, bottom_gap = 48 }
+
+local function find_scratchpad()
+  return hl.get_windows(window_match)[1]
+end
 
 -- Pay Qt initialization and note loading at login, before the first shortcut.
 o.exec_on_start(repo .. "/toggle prewarm")
 
 function quickshell_scratchpad_toggle()
-  local window = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
+  local window = find_scratchpad()
   if not window then
     -- Cold path: start (or recover) the instance; its window maps focused.
     hl.exec_cmd(repo .. "/toggle start")
@@ -27,7 +39,7 @@ end
 
 -- Capture always shows the window, including when it is already visible.
 function quickshell_scratchpad_show()
-  local window = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
+  local window = find_scratchpad()
   if not window then return false end
   hl.dispatch(hl.dsp.window.move({ workspace = hl.get_active_workspace(), window = window, follow = false }))
   hl.dispatch(hl.dsp.focus({ window = window }))
@@ -37,13 +49,20 @@ end
 -- Tall (the window rule's size) or short, keeping the bottom-right corner in
 -- place. Called by the scratchpad when the mode changes and when it maps.
 function quickshell_scratchpad_layout(short)
-  local window = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
+  local window = find_scratchpad()
   if not window then return end
   local monitor = hl.get_active_monitor()
   local width, height = monitor.width / monitor.scale, monitor.height / monitor.scale
-  local size = { x = math.floor(width * 0.25), y = math.floor(height * (short and 0.3 or 0.75)) }
+  local size = {
+    x = math.floor(width * layout.width),
+    y = math.floor(height * (short and layout.short or layout.tall)),
+  }
   hl.dispatch(hl.dsp.window.resize({ x = size.x, y = size.y, window = window }))
-  hl.dispatch(hl.dsp.window.move({ x = monitor.x + width - size.x - 32, y = monitor.y + height - size.y - 48, window = window }))
+  hl.dispatch(hl.dsp.window.move({
+    x = monitor.x + width - size.x - layout.right_gap,
+    y = monitor.y + height - size.y - layout.bottom_gap,
+    window = window,
+  }))
 end
 
 -- Hyprland's directional focus never crosses between floating and tiled
@@ -77,7 +96,7 @@ local function nearest(from, candidates, direction)
 end
 
 function quickshell_scratchpad_focus(direction)
-  local pad = hl.get_windows({ class = "org.quickshell", title = "Scratchpad" })[1]
+  local pad = find_scratchpad()
   local workspace = hl.get_active_workspace()
   local active = hl.get_active_window()
   if not (pad and active and pad.workspace and pad.workspace.id == workspace.id) then
@@ -111,12 +130,15 @@ o.bind("SUPER + A", "Add point to Global scratchpad", repo .. "/capture")
 
 o.bind("SUPER + N", "Notes scratchpad", quickshell_scratchpad_toggle)
 
--- Right side, one quarter wide and three quarters tall (see
+-- Right side, one quarter wide and three quarters tall (see `layout` and
 -- quickshell_scratchpad_layout for short mode).
 o.window({ class = "^org.quickshell$", title = "^Scratchpad$" }, {
   float = true,
-  size = { "monitor_w * 0.25", "monitor_h * 0.75" },
-  move = { "monitor_w * 0.75 - 32", "monitor_h * 0.25 - 48" },
+  size = { "monitor_w * " .. layout.width, "monitor_h * " .. layout.tall },
+  move = {
+    "monitor_w * " .. (1 - layout.width) .. " - " .. layout.right_gap,
+    "monitor_h * " .. (1 - layout.tall) .. " - " .. layout.bottom_gap,
+  },
   opacity = "1.0 1.0",
   no_anim = true,
 })

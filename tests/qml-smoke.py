@@ -121,11 +121,11 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     check(points.count === 2 && root.editor.text === "- second selection", "selection appends without replacing existing point");
                     root.openHelp(); break;
                 case 17:
-                    check(helpPopup.opened && helpSearch.activeFocus, "help opens with search focused");
+                    check(helpPopup.opened && helpPopup.searchField.activeFocus, "help opens with search focused");
                     check(helpPopup.rows.length > 10, "help lists shortcuts");
-                    helpSearch.text = "browse";
+                    helpPopup.searchField.text = "browse";
                     check(helpPopup.rows.length === 1 && helpPopup.rows[0].keys === "CTRL + B", "help filters shortcuts");
-                    helpPopup.run(helpList.currentIndex); break;
+                    helpPopup.run(helpPopup.currentIndex); break;
                 case 18:
                     check(!helpPopup.opened && root.browsing, "help runs the selected shortcut");
                     check(browseSearch.activeFocus, "browser focuses search");
