@@ -38,10 +38,12 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     check(points.count === 1 && points.get(0).body === "Legacy\\n\\noriginal text", "legacy migration");
                     check(root.editor !== null, "editor available");
                     check(root.editor.activeFocus, "startup editor focus");
-                    check(findChild(pointRepeater.itemAt(0), "markdownLoader").item === null, "preview deferred while editing");
+                    check(!pointRepeater.itemAt(0).rendering, "focused point shows its source");
                     root.addPoint(); break;
                 case 1:
                     check(points.count === 2 && root.editor !== null, "new point editor");
+                    check(pointRepeater.itemAt(0).rendering && !pointRepeater.itemAt(1).rendering,
+                          "leaving a point renders it automatically");
                     root.editor.text = "Second point\\n- nested detail"; break;
                 case 2:
                     check(points.get(1).body === "Second point\\n- nested detail", "edits update model");
@@ -61,11 +63,33 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
                     check(points.get(0).body.indexOf("Second") === 0 && root.activePoint === 0, "reorder up");
                     root.reorderPoint(-1);
                     check(root.activePoint === 0 && points.get(0).body.indexOf("Second") === 0, "reorder stops at the top");
-                    root.togglePreview(); break;
+                    break;
                 case 4:
-                    check(findChild(pointRepeater.itemAt(0), "markdownLoader").item !== null, "preview loaded on demand");
-                    root.togglePreview();
-                    check(findChild(pointRepeater.itemAt(0), "markdownLoader").item !== null, "preview retained for reuse");
+                    check(root.editor.activeFocus && !pointRepeater.itemAt(0).rendering && pointRepeater.itemAt(1).rendering,
+                          "keyboard navigation edits only the focused point");
+                    const card = pointRepeater.itemAt(0);
+                    const input = root.editor;
+                    const source = points.get(0).body;
+                    input.cursorPosition = 5;
+                    input.insert(5, "**bold**");
+                    const cursor = input.cursorPosition;
+                    check(points.get(0).body === source.slice(0, 5) + "**bold**" + source.slice(5), "Markdown edits keep exact source");
+                    const updated = pads.get(root.activeIndex).updated;
+                    titleInput.forceActiveFocus();
+                    check(card.rendering && !input.activeFocus, "title focus renders the last edited point");
+                    const preview = findChild(card, "markdownLoader").item;
+                    check(preview !== null && preview.markdown === points.get(0).body, "rendering uses the current source");
+                    preview.editRequested();
+                    check(input === root.editor && input.activeFocus && !card.rendering, "click to edit reuses the source editor");
+                    check(input.cursorPosition === cursor && input.canUndo, "focus changes preserve cursor and undo");
+                    input.undo();
+                    check(points.get(0).body === source, "undo survives rendering");
+                    check(pads.get(root.activeIndex).updated >= updated, "editing updates the note");
+                    const untouched = pads.get(root.activeIndex).updated;
+                    titleInput.forceActiveFocus();
+                    preview.editRequested();
+                    check(points.get(0).body === source && pads.get(root.activeIndex).updated === untouched,
+                          "rendering and refocusing do not rewrite or mark the note edited");
                     root.newPad(); break;
                 case 5:
                     check(titleInput.selectedText.indexOf("untitled-") === 0, "new title selected");
@@ -267,7 +291,7 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
     result = subprocess.run(["quickshell", "-p", str(temp), "--no-color"], env=env,
                             capture_output=True, text=True, timeout=10)
     assert "POINTS_RELOAD_OK" in result.stdout + result.stderr, result.stdout + result.stderr
-    print("QML points, editing, ordering, preview, switching, pinning, save and reload passed")
+    print("QML points, live rendering, undo, ordering, switching, pinning, save and reload passed")
 
     # A login preload must load data without mapping or stealing focus. Exercise
     # the real IPC entry points, including first capture before a surface exists.
@@ -313,3 +337,82 @@ with tempfile.TemporaryDirectory(prefix="scratchpad-points-") as folder:
         process.terminate()
         output, _ = process.communicate(timeout=5)
         assert "TypeError" not in output and "ReferenceError" not in output, output
+
+    # Send real pointer/key events to the native controls, including the code
+    # copy button, whose click must not unexpectedly open the source editor.
+    store.write_text(json.dumps({"version": 3, "activeIndex": 0, "pads": [
+        {"name": "Global", "global": True, "pinned": True, "points": [
+            "# Heading\n\n**Bold** text\n\n```js\nconst answer = 42;\n```",
+            "# Long point\n\n" + "Paragraph.\n\n" * 60,
+        ]},
+    ]}))
+    source = "import QtTest\n" + (repo / "shell.qml").read_text()
+    pointer_harness = '''
+    TestCase { id: interaction; name: "LiveMarkdown"; when: false }
+    Timer {
+        interval: 200; running: true; repeat: true
+        property int step: 0
+        property string original: ""
+        function check(value, message) { if (!value) throw new Error(message); }
+        function findChild(item, name) {
+            if (item.objectName === name && item.visible) return item;
+            for (const child of item.children || []) {
+                const found = findChild(child, name);
+                if (found) return found;
+            }
+            return null;
+        }
+        onTriggered: {
+            try {
+                const card = pointRepeater.itemAt(0);
+                switch (step++) {
+                case 0:
+                    check(root.ready, "pointer fixture loaded");
+                    original = points.get(0).body;
+                    titleInput.forceActiveFocus(); break;
+                case 1:
+                    check(card.rendering && pointRepeater.itemAt(1).height > 480, "rendered points grow with their content");
+                    interaction.mouseClick(findChild(card, "codeCopy"), 10, 10);
+                    check(card.rendering, "copying code keeps the point rendered");
+                    interaction.mouseClick(findChild(card, "codeText"), 10, 10);
+                    check(card.editor.activeFocus && !card.rendering, "clicking rendered code edits the point");
+                    check(points.get(0).body === original, "clicking preserves source");
+                    card.editor.cursorPosition = card.editor.length;
+                    interaction.keyClick(Qt.Key_X);
+                    check(points.get(0).body === original + "x", "key input updates Markdown");
+                    interaction.mouseClick(titleInput, 10, 10); break;
+                case 2:
+                    check(card.rendering, "clicking title renders the edited point");
+                    interaction.mouseClick(findChild(card, "markdownProse"), 10, 10);
+                    check(card.editor.activeFocus && !card.rendering, "clicking rendered prose edits the point");
+                    interaction.keyClick(Qt.Key_Z, Qt.ControlModifier);
+                    check(points.get(0).body === original, "keyboard undo survives automatic rendering");
+                    interaction.keyClick(Qt.Key_Down, Qt.AltModifier); break;
+                case 3:
+                    check(root.activePoint === 1 && root.editor.activeFocus && card.rendering, "Alt+Down opens the next source editor");
+                    root.editor.cursorPosition = root.editor.length;
+                    root.ensureCursorVisible();
+                    check(pointScroll.contentItem.contentY > 0, "main scrollbar follows a long point's cursor");
+                    root.updatePoint(1, "");
+                    titleInput.forceActiveFocus(); break;
+                case 4:
+                    check(!pointRepeater.itemAt(1).rendering, "empty points keep an editable surface");
+                    root.focusPoint(-1); break;
+                case 5:
+                    check(root.editor.activeFocus && points.get(0).body === original, "returning restores original source");
+                    console.log("LIVE_POINTER_OK"); Qt.quit(); break;
+                }
+            } catch (error) {
+                console.error("LIVE_POINTER_FAILED: " + error.message);
+                Qt.quit();
+            }
+        }
+    }
+'''
+    shell.write_text(source[:source.rfind('}')] + pointer_harness + '}\n')
+    result = subprocess.run(["quickshell", "-p", str(temp), "--no-color"], env=env,
+                            capture_output=True, text=True, timeout=10)
+    output = result.stdout + result.stderr
+    assert "LIVE_POINTER_OK" in output, output
+    assert "TypeError" not in output and "ReferenceError" not in output, output
+    print("Native mouse/key events, automatic rendering, code copying, undo and long-point scrolling passed")

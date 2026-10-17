@@ -21,7 +21,6 @@ var entries = [
     { section: "Points", action: "movePointUp", label: "Move point up", sequences: ["Alt+Shift+Up"], keywords: "reorder" },
     { section: "Points", action: "movePointDown", label: "Move point down", sequences: ["Alt+Shift+Down"], keywords: "reorder" },
     { section: "Points", action: "copy", label: "Copy points for agents", sequences: ["Ctrl+Shift+C"], keywords: "clipboard markdown list export" },
-    { section: "Points", action: "preview", label: "Preview points as Markdown", sequences: ["Ctrl+Shift+M"], keywords: "toggle edit render view" },
 
     { section: "Window", action: "hide", label: "Hide scratchpad", sequences: ["Escape"], keywords: "close dismiss" },
     { section: "Window", action: "zen", label: "Zen mode", sequences: ["Ctrl+H"], keywords: "hide all buttons toolbar distraction free focus minimal" },

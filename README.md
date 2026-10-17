@@ -92,7 +92,6 @@ using the Lua config.
 | New point in this note | **Ctrl+Shift+N** or **Ctrl+Enter** |
 | Browse and search notes | **Ctrl+B** |
 | Copy every point as a numbered list | **Ctrl+Shift+C** |
-| Preview as Markdown | **Ctrl+Shift+M** |
 | See every shortcut | **F1** or **Ctrl+/** |
 
 Everything saves automatically.
@@ -160,19 +159,27 @@ Each row shows the title and the first line of the note's points.
 numbered Markdown list. Multiline text, nested lists and code blocks are
 indented under their number, so an agent reads each point as a separate item.
 
-### Markdown preview
+### Live Markdown points
 
-**Preview** (or **Ctrl+Shift+M**) renders every point with Qt's built-in
-Markdown support: headings, lists, links, quotes, tables, task lists and fenced
-code. Nothing extra needs installing.
+Points render automatically using Qt's built-in Markdown support: headings,
+lists, links, quotes, tables, task lists and fenced code. Click a point's text
+to edit its Markdown in place; when focus leaves it, the formatting returns.
+**Alt+Up** / **Alt+Down** opens the previous or next point for editing. There
+is no separate Preview mode or toggle, and nothing extra needs installing.
 
-- You can select and copy preview text, and links open in your default app.
+- The point being edited shows its Markdown source; the other points stay
+  rendered. This trial renders between points, rather than formatting the
+  point while you type.
+- Links open in your default app. Drag to select rendered text, or click to
+  edit and select the original Markdown.
 - Code blocks get their own panel with a language label and a **Copy** button.
   Long lines scroll sideways and keep their indentation.
 - Basic syntax highlighting for common languages: `js`, `ts`, `python`,
   `bash`, `json`, `qml`, `rust`, `yaml`, `go`, `c`/`cpp`, `css` and others.
   Anything else stays plain text.
-- Points are always saved as the original Markdown. New notes open in edit mode.
+- Points are always saved as the original Markdown. Moving focus preserves
+  the editor's cursor and undo history and never rewrites the source.
+- Long points use the main notes scrollbar; code lines can scroll sideways.
 
 ### Layout and focus
 
@@ -212,7 +219,6 @@ fuzzy-filter by action, key or initials (`ctrl shift c`, `mpd`), then press
 | | Previous / next point | Alt+Up / Alt+Down |
 | | Move point up / down | Alt+Shift+Up / Alt+Shift+Down |
 | | Copy points for agents | Ctrl+Shift+C |
-| | Preview as Markdown | Ctrl+Shift+M |
 | **Window** | Hide scratchpad | Escape |
 | | Zen mode | Ctrl+H |
 | | Short / tall window | Ctrl+Down / Ctrl+Up |
@@ -327,7 +333,7 @@ Showing and hiding is instant because no process starts:
 # Markdown, highlighting, notes file, export, shortcut and note-list logic
 node --test tests/*.test.cjs
 
-# Offscreen QML run of editing, reordering, preview, browsing, pinning and saving
+# Offscreen QML run of editing, live rendering, browsing, pinning and saving
 # (needs Quickshell; uses a temporary copy and never touches your notes)
 python3 tests/qml-smoke.py
 

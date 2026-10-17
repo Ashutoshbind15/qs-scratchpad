@@ -8,14 +8,13 @@ Rectangle {
     required property int number
     required property int pointCount
     property string source: ""
-    property bool previewMode: false
+    property bool editing: false
+    readonly property bool rendering: !editing && source.trim().length > 0
     property bool showControls: true
     property alias editor: input
     function focusContent() {
-        if (previewMode) {
-            if (rendered.item) rendered.item.forceActiveFocus();
-        }
-        else input.forceActiveFocus();
+        editing = true;
+        input.forceActiveFocus();
     }
     signal edited(string text)
     signal focused()
@@ -63,7 +62,7 @@ Rectangle {
             id: input
             Layout.fillWidth: true
             Layout.minimumHeight: card.colors.px(64)
-            visible: !card.previewMode
+            visible: !card.rendering
             text: card.source
             color: card.colors.foreground
             selectionColor: card.colors.textSelection
@@ -77,26 +76,29 @@ Rectangle {
             padding: 2
             background: null
             onTextChanged: if (text !== card.source) card.edited(text)
-            onActiveFocusChanged: if (activeFocus) card.focused()
+            onActiveFocusChanged: {
+                card.editing = activeFocus;
+                if (activeFocus) card.focused();
+            }
             onCursorRectangleChanged: if (activeFocus) card.caretMoved()
 
         }
-        // Build Markdown controls only on the first preview, then retain them
-        // so returning to preview does not rebuild the component tree.
+        // Keep the source editor alive across focus changes: rendering must
+        // never replace its document, cursor, selection or undo history.
         Loader {
             id: rendered
             objectName: "markdownLoader"
             Layout.fillWidth: true
-            Layout.preferredHeight: item ? Math.min(480, Math.max(64, item.contentHeight)) : 0
-            active: card.previewMode || item !== null
-            visible: card.previewMode
+            Layout.preferredHeight: item ? Math.max(card.colors.px(64), item.contentHeight) : 0
+            active: card.rendering || item !== null
+            visible: card.rendering
             sourceComponent: Component {
                 MarkdownPreview {
                     colors: card.colors
-                    markdown: card.previewMode ? card.source : ""
+                    markdown: card.rendering ? card.source : ""
+                    onEditRequested: card.focusContent()
                 }
             }
-            onLoaded: if (card.previewMode) item.forceActiveFocus()
         }
     }
 }

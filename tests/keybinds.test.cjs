@@ -30,12 +30,12 @@ test('sections stay contiguous and paired shortcuts stay adjacent', () => {
 test('search ranks label prefixes first and requires every term', () => {
     assert.equal(best('copy'), 'Copy points for agents');
     assert.equal(best('del'), 'Delete note');
-    assert.equal(labels('preview')[0], 'Preview points as Markdown');
+    assert.deepEqual(labels('preview'), []);
     assert.deepEqual(labels('delete point'), ['Delete point']);
     assert.deepEqual(labels('point zzz'), []);
 });
 test('search matches keys, keywords, and acronyms', () => {
-    assert.equal(best('ctrl shift m'), 'Preview points as Markdown');
+    assert.equal(best('ctrl shift c'), 'Copy points for agents');
     assert.equal(best('alt shift'), 'Move point up');
     assert.ok(labels('clipboard').includes('Copy points for agents'));
     assert.equal(best('mpd'), 'Move point down');

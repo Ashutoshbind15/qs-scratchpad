@@ -8,6 +8,7 @@ ScrollView {
     id: view
     required property var colors
     property string markdown: ""
+    signal editRequested()
     readonly property var blocks: MarkdownBlocks.parse(markdown)
     clip: true
     contentWidth: availableWidth
@@ -26,6 +27,8 @@ ScrollView {
                 required property var modelData
                 width: parent.width - 8
                 TextArea {
+                    id: proseText
+                    objectName: "markdownProse"
                     visible: !block.modelData.code
                     width: parent.width
                     height: visible ? implicitHeight : 0
@@ -41,6 +44,12 @@ ScrollView {
                     padding: 0
                     background: null
                     onLinkActivated: link => Qt.openUrlExternally(link)
+                    TapHandler {
+                        onTapped: eventPoint => {
+                            if (!proseText.linkAt(eventPoint.position.x, eventPoint.position.y))
+                                view.editRequested();
+                        }
+                    }
                 }
                 Rectangle {
                     visible: block.modelData.code
@@ -69,6 +78,7 @@ ScrollView {
                             }
                             Button {
                                 id: copyButton
+                                objectName: "codeCopy"
                                 anchors.right: parent.right
                                 anchors.rightMargin: 4
                                 anchors.verticalCenter: parent.verticalCenter
@@ -119,6 +129,7 @@ ScrollView {
                                 selectedTextColor: view.colors.selectedText
                                 padding: 6
                                 background: null
+                                TapHandler { onTapped: view.editRequested() }
                             }
                         }
                     }

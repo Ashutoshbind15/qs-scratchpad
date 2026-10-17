@@ -45,7 +45,6 @@ Scope {
     // View settings, saved with the notes. Ctrl+Shift+H hides the per-point
     // ↑ ↓ × and + buttons; Ctrl+H (zen) hides those and the bottom bar.
     // Ctrl+Down / Ctrl+Up switch to a short window; Hyprland applies the size.
-    property bool previewMode: false
     property bool pointControls: true
     property bool zen: false
     property bool shortWindow: false
@@ -84,7 +83,7 @@ Scope {
     }
 
     function ensureCursorVisible() {
-        if (previewMode || !editor) return;
+        if (!editor || !editor.activeFocus) return;
         const flick = pointScroll.contentItem;
         const caret = editor.mapToItem(flick.contentItem, 0, editor.cursorRectangle.y);
         const bottom = caret.y + editor.cursorRectangle.height + 12;
@@ -104,7 +103,6 @@ Scope {
 
     function addPoint() {
         if (!ready || activeIndex < 0) return;
-        previewMode = false;
         points.append({ body: "" });
         activePoint = points.count - 1;
         touch();
@@ -121,7 +119,6 @@ Scope {
         if (!ready) { pendingCaptures.push(text); return; }
         selectPad(globalIndex());
         browsing = false;
-        previewMode = false;
         clearPointsArmed = false;
         // Reuse an empty last point so repeated presses do not pile up blanks.
         if (points.count && isBlank(points.get(points.count - 1).body)) {
@@ -148,7 +145,6 @@ Scope {
         }
         clearPointsArmed = false;
         toast("Cleared points");
-        previewMode = false;
         points.clear();
         points.append({ body: "" });
         activePoint = 0;
@@ -210,12 +206,6 @@ Scope {
         toastTimer.restart();
     }
 
-    function togglePreview() {
-        if (!ready || activeIndex < 0) return;
-        previewMode = !previewMode;
-        focusContent();
-    }
-
     // Note browser, newest edit first. Rows are recomputed from `pads` only
     // while it is open.
     readonly property var browseRows: {
@@ -266,7 +256,6 @@ Scope {
     function openBrowser() {
         if (!ready) return;
         commitActive();
-        previewMode = false;
         clearArmed = false;
         browseSearch.text = "";
         browsing = true;
@@ -420,7 +409,6 @@ Scope {
         case "shortWindow": setShortWindow(true); break;
         case "tallWindow": setShortWindow(false); break;
         case "copy": if (ready && activeIndex >= 0 && hasPointText) copyForAgents(); break;
-        case "preview": togglePreview(); break;
         case "zoomIn": zoom(1); break;
         case "zoomOut": zoom(-1); break;
         case "zoomReset": zoom(0); break;
@@ -565,7 +553,6 @@ Scope {
     function newPad() {
         if (!ready || switching) return;
         browsing = false;
-        previewMode = false;
         clearArmed = false;
         if (activeIndex >= 0 && activeIndex < pads.count && isBlank(activeText())) {
             pads.remove(activeIndex);
@@ -888,13 +875,6 @@ Scope {
         }
 
         Shortcut {
-            sequence: "Ctrl+Shift+M"
-            context: Qt.WindowShortcut
-            enabled: root.editing
-            onActivated: root.togglePreview()
-        }
-
-        Shortcut {
             sequences: ["Ctrl+=", "Ctrl++", "Ctrl+Shift+="]
             context: Qt.WindowShortcut
             onActivated: root.zoom(1)
@@ -1000,7 +980,6 @@ Scope {
                                 number: index + 1
                                 pointCount: points.count
                                 source: body
-                                previewMode: root.previewMode
                                 showControls: root.pointControls && !root.zen
                                 onEdited: text => root.updatePoint(index, text)
                                 onFocused: root.activePoint = index
@@ -1075,12 +1054,6 @@ Scope {
                         onClicked: root.setShortWindow(!root.shortWindow)
                     }
                     Item { Layout.fillWidth: true }
-                    PointButton {
-                        colors: theme
-                        text: root.previewMode ? "Edit" : "Preview"
-                        enabled: root.ready && root.activeIndex >= 0
-                        onClicked: root.togglePreview()
-                    }
                     PointButton {
                         colors: theme
                         text: copied.running ? "Copied!" : "Copy"
