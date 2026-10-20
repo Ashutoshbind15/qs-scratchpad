@@ -68,55 +68,83 @@ end
 -- Hyprland's directional focus never crosses between floating and tiled
 -- windows, so Super+arrows could neither reach the floating scratchpad nor
 -- leave it. These replace Omarchy's bindings and fall back to them whenever
--- the scratchpad isn't on the active workspace.
+-- the scratchpad isn't visible.
 local function center(window)
   return window.at.x + window.size.x / 2, window.at.y + window.size.y / 2
 end
 
--- Nearest window whose center lies in `direction` from `from`'s center.
--- Sideways offset counts double, so a window straight ahead beats one at an angle.
-local function nearest(from, candidates, direction)
+-- How far `to` lies in `direction` from `from` (center to center), and how far
+-- off to the side.
+local function offset(from, to, direction)
   local fx, fy = center(from)
+  local x, y = center(to)
+  if direction == "l" then return fx - x, y - fy
+  elseif direction == "r" then return x - fx, y - fy
+  elseif direction == "u" then return fy - y, x - fx
+  else return y - fy, x - fx end
+end
+
+-- Nearest window whose center lies in `direction` from `from`'s center, and
+-- its score. Sideways offset counts double, so a window straight ahead beats
+-- one at an angle.
+local function nearest(from, candidates, direction)
   local best, best_score
   for _, window in ipairs(candidates) do
     if window.address ~= from.address and window.mapped and not window.hidden then
-      local x, y = center(window)
-      local along, across
-      if direction == "l" then along, across = fx - x, y - fy
-      elseif direction == "r" then along, across = x - fx, y - fy
-      elseif direction == "u" then along, across = fy - y, x - fx
-      else along, across = y - fy, x - fx end
+      local along, across = offset(from, window, direction)
       local score = along + 2 * math.abs(across)
       if along > 0 and (not best_score or score < best_score) then
         best, best_score = window, score
       end
     end
   end
-  return best
+  return best, best_score
+end
+
+-- Windows on every monitor's active workspace: what is on screen.
+local function visible_windows()
+  local shown = {}
+  for _, monitor in ipairs(hl.get_monitors()) do
+    if monitor.active_workspace then shown[monitor.active_workspace.id] = true end
+  end
+  local windows = {}
+  for _, window in ipairs(hl.get_windows()) do
+    if window.workspace and shown[window.workspace.id] then windows[#windows + 1] = window end
+  end
+  return windows
 end
 
 function quickshell_scratchpad_focus(direction)
   local pad = find_scratchpad()
-  local workspace = hl.get_active_workspace()
   local active = hl.get_active_window()
-  if not (pad and active and pad.workspace and pad.workspace.id == workspace.id) then
+  local windows = pad and active and visible_windows() or {}
+  local pad_visible = false
+  for _, window in ipairs(windows) do
+    if window.address == pad.address then pad_visible = true end
+  end
+  if not pad_visible then
     hl.dispatch(hl.dsp.focus({ direction = direction }))
     return
   end
   if active.address == pad.address then
-    local others = {}
-    for _, window in ipairs(hl.get_windows()) do
-      if window.workspace and window.workspace.id == workspace.id then others[#others + 1] = window end
-    end
-    local target = nearest(pad, others, direction)
-    if target then hl.dispatch(hl.dsp.focus({ window = target })) end
+    -- Leave toward the nearest window on screen, on any monitor.
+    local target = nearest(pad, windows, direction)
+    if target then hl.dispatch(hl.dsp.focus({ window = target }))
+    else hl.dispatch(hl.dsp.focus({ direction = direction })) end
     return
   end
-  -- Prefer Hyprland's own choice; enter the scratchpad only at the edge.
+  -- Prefer Hyprland's own choice unless the scratchpad is closer that way.
+  -- Hyprland skips floating windows and jumps to the next monitor, so with a
+  -- monitor beyond it the scratchpad was unreachable.
+  local _, pad_score = nearest(active, { pad }, direction)
   hl.dispatch(hl.dsp.focus({ direction = direction }))
+  if not pad_score then return end
   local now = hl.get_active_window()
-  if now and now.address ~= active.address then return end
-  if nearest(active, { pad }, direction) then hl.dispatch(hl.dsp.focus({ window = pad })) end
+  if now and now.address ~= active.address then
+    local _, now_score = nearest(active, { now }, direction)
+    if now_score and now_score <= pad_score then return end
+  end
+  hl.dispatch(hl.dsp.focus({ window = pad }))
 end
 
 for key, info in pairs({ LEFT = { "l", "left" }, RIGHT = { "r", "right" }, UP = { "u", "above" }, DOWN = { "d", "below" } }) do

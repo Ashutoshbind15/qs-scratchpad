@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.21)
+project(ScratchpadWeb LANGUAGES CXX)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 REQUIRED COMPONENTS Core CorePrivate Qml)
+add_library(scratchpadweb MODULE plugin.cpp)
+target_link_libraries(scratchpadweb PRIVATE Qt6::CorePrivate Qt6::Qml)

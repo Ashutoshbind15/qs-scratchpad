@@ -25,11 +25,13 @@ Scope {
     property int activePoint: 0
     property bool switching: false
     property int titleFocusGeneration: 0
+    // Changes only when another note opens; the editor rebuilds its points then.
+    property int documentRevision: 0
     readonly property bool activeGlobal: activeIndex >= 0 && pads.count > activeIndex && pads.get(activeIndex).global
     readonly property bool editing: ready && activeIndex >= 0 && !browsing
     readonly property bool hasPointText: !isBlank(Points.combined(pointTexts()))
-    readonly property var editor: pointRepeater.count > activePoint && pointRepeater.itemAt(activePoint)
-                                  ? pointRepeater.itemAt(activePoint).editor : null
+    property int pointsRevision: 0
+    property int nextPointId: 0
 
     // Note browser (Ctrl+B)
     property bool browsing: false
@@ -77,20 +79,12 @@ Scope {
 
     function focusContent() {
         if (browsing) { browseSearch.forceActiveFocus(); return; }
-        const card = pointRepeater.itemAt(activePoint);
-        if (card) card.focusContent();
+        pointEditor.focusContent();
         Qt.callLater(ensureCursorVisible);
     }
 
     function ensureCursorVisible() {
-        if (!editor || !editor.activeFocus) return;
-        const flick = pointScroll.contentItem;
-        const caret = editor.mapToItem(flick.contentItem, 0, editor.cursorRectangle.y);
-        const bottom = caret.y + editor.cursorRectangle.height + 12;
-        const top = Math.max(0, caret.y - 12);
-        if (top < flick.contentY) flick.contentY = top;
-        else if (bottom > flick.contentY + flick.height)
-            flick.contentY = Math.max(0, bottom - flick.height);
+        if (pointEditor.activeFocus) pointEditor.ensureCursorVisible();
     }
 
     function updatePoint(index, text) {
@@ -103,7 +97,7 @@ Scope {
 
     function addPoint() {
         if (!ready || activeIndex < 0) return;
-        points.append({ body: "" });
+        points.append({ body: "", key: ++nextPointId });
         activePoint = points.count - 1;
         touch();
         save();
@@ -130,7 +124,7 @@ Scope {
             save();
             Qt.callLater(function() {
                 focusContent();
-                if (editor) editor.cursorPosition = editor.length;
+                pointEditor.focusEnd();
             });
         }
     }
@@ -146,7 +140,7 @@ Scope {
         clearPointsArmed = false;
         toast("Cleared points");
         points.clear();
-        points.append({ body: "" });
+        points.append({ body: "", key: ++nextPointId });
         activePoint = 0;
         touch();
         copied.stop();
@@ -226,7 +220,9 @@ Scope {
 
     function setBrowseCurrent(index) {
         browseCurrent = Math.max(0, index);
-        if (browseScroll && browseCurrent >= browseVisible.length - 3) loadMore();
+        // Deferred: this runs from onBrowseVisibleChanged, and growing the
+        // list there re-enters browseVisible's binding.
+        if (browseScroll && browseCurrent >= browseVisible.length - 3) Qt.callLater(loadMore);
         Qt.callLater(function() { if (browsing) browseList.positionViewAtIndex(browseCurrent, ListView.Contain); });
     }
 
@@ -368,16 +364,25 @@ Scope {
         save();
     }
 
+    // Always resizes: Hyprland can map or move the window at the other size,
+    // and Ctrl+Down must still shrink it when the setting already says short.
     function setShortWindow(short) {
+        applyWindowSize(short);
         if (short === shortWindow) return;
         shortWindow = short;
-        applyWindowSize();
         toast(short ? "Short window · Ctrl+Up for tall" : "Tall window");
         save();
     }
 
-    function applyWindowSize() {
-        Quickshell.execDetached(["hyprctl", "eval", "quickshell_scratchpad_layout(" + shortWindow + ")"]);
+    function applyWindowSize(short = shortWindow) {
+        Quickshell.execDetached(["hyprctl", "eval", "quickshell_scratchpad_layout(" + short + ")"]);
+    }
+
+    // Hyprland's rule maps the window tall, and monitor or config changes can
+    // resize it. Short is under half the screen (see omarchy.lua's layout).
+    function syncWindowSize() {
+        if (!ready || !window.screen) return;
+        if ((window.height < window.screen.height / 2) !== shortWindow) applyWindowSize();
     }
 
     function openHelp() {
@@ -446,12 +451,13 @@ Scope {
     function showEditor(index, selectTitle) {
         clearPointsArmed = false;
         const generation = ++titleFocusGeneration;
+        documentRevision++;
         switching = true;
         activeIndex = index;
         activeTitle = index >= 0 ? pads.get(index).name : "";
         points.clear();
         const entries = index >= 0 ? JSON.parse(pads.get(index).pointsJson) : [];
-        for (const body of entries) points.append({ body: body });
+        for (const body of entries) points.append({ body: body, key: ++nextPointId });
         activePoint = 0;
         copied.stop();
         switching = false;
@@ -498,14 +504,14 @@ Scope {
         pointControls = settings.pointControls;
         zen = settings.zen;
         shortWindow = settings.shortWindow;
-        if (shortWindow && window.backingWindowVisible) applyWindowSize();
+        if (window.backingWindowVisible) syncWindowSize();
         if (settings.fontSize !== null)
             theme.fontSize = Math.max(theme.minFontSize, Math.min(theme.maxFontSize, settings.fontSize));
 
         activeTitle = pads.get(activeIndex).name;
         points.clear();
         for (const body of JSON.parse(pads.get(activeIndex).pointsJson))
-            points.append({ body: body });
+            points.append({ body: body, key: ++nextPointId });
 
         ready = true;
         errorMessage = "";
@@ -669,6 +675,14 @@ Scope {
         function onModelReset() { root.padsRevision++; }
     }
     ListModel { id: points }
+    Connections {
+        target: points
+        function onDataChanged() { root.pointsRevision++; }
+        function onRowsInserted() { root.pointsRevision++; }
+        function onRowsRemoved() { root.pointsRevision++; }
+        function onRowsMoved() { root.pointsRevision++; }
+        function onModelReset() { root.pointsRevision++; }
+    }
     // How long the Copy button reads "Copied!".
     Timer { id: copied; interval: 1500 }
 
@@ -745,157 +759,167 @@ Scope {
             } else root.focusContent();
         }
         // Hyprland's window rule maps it tall, including after a compositor close.
-        onBackingWindowVisibleChanged: if (backingWindowVisible && root.ready && root.shortWindow) root.applyWindowSize()
+        // The map can race this call, so focusing the window checks again.
+        onBackingWindowVisibleChanged: if (backingWindowVisible) root.syncWindowSize()
 
         Shortcut {
             sequence: "Ctrl+N"
             context: Qt.WindowShortcut
-            enabled: root.ready
+            enabled: !pointEditor.activeFocus && (root.ready)
             onActivated: root.newPad()
         }
 
         Shortcut {
             sequence: "Ctrl+W"
             context: Qt.WindowShortcut
-            enabled: root.canActOnNote
+            enabled: !pointEditor.activeFocus && (root.canActOnNote)
             onActivated: root.deleteNote()
         }
 
         Shortcut {
             sequence: "Ctrl+B"
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.toggleBrowser()
         }
 
         Shortcut {
             sequence: "F2"
             context: Qt.WindowShortcut
-            enabled: root.canActOnNote
+            enabled: !pointEditor.activeFocus && (root.canActOnNote)
             onActivated: root.renameNote()
         }
 
         Shortcut {
             sequence: "Ctrl+P"
             context: Qt.WindowShortcut
-            enabled: root.canActOnNote
+            enabled: !pointEditor.activeFocus && (root.canActOnNote)
             onActivated: root.pinNote()
         }
 
         Shortcut {
             sequence: "Ctrl+G"
             context: Qt.WindowShortcut
-            enabled: root.ready
+            enabled: !pointEditor.activeFocus && (root.ready)
             onActivated: root.openGlobal()
         }
 
         Shortcut {
             sequence: "Ctrl+H"
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.toggleZen()
         }
 
         Shortcut {
             sequence: "Ctrl+Shift+H"
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.togglePointControls()
         }
 
         Shortcut {
             sequences: ["F1", "Ctrl+/", "Ctrl+?"]
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.openHelp()
         }
 
         Shortcut {
             sequences: ["Ctrl+Shift+N", "Ctrl+Return", "Ctrl+Enter"]
             context: Qt.WindowShortcut
-            enabled: root.editing
+            enabled: !pointEditor.activeFocus && (root.editing)
             onActivated: root.addPoint()
         }
 
         Shortcut {
             sequence: "Alt+Up"
             context: Qt.WindowShortcut
-            enabled: root.editing && points.count > 1
+            enabled: !pointEditor.activeFocus && (root.editing && points.count > 1)
             onActivated: root.focusPoint(-1)
         }
 
         Shortcut {
             sequence: "Alt+Down"
             context: Qt.WindowShortcut
-            enabled: root.editing && points.count > 1
+            enabled: !pointEditor.activeFocus && (root.editing && points.count > 1)
             onActivated: root.focusPoint(1)
         }
 
         Shortcut {
             sequence: "Alt+Shift+Up"
             context: Qt.WindowShortcut
-            enabled: root.editing && root.activePoint > 0
+            enabled: !pointEditor.activeFocus && (root.editing && root.activePoint > 0)
             onActivated: root.reorderPoint(-1)
         }
 
         Shortcut {
             sequence: "Alt+Shift+Down"
             context: Qt.WindowShortcut
-            enabled: root.editing && root.activePoint < points.count - 1
+            enabled: !pointEditor.activeFocus && (root.editing && root.activePoint < points.count - 1)
             onActivated: root.reorderPoint(1)
         }
 
         Shortcut {
             sequence: "Ctrl+Shift+W"
             context: Qt.WindowShortcut
-            enabled: root.editing
+            enabled: !pointEditor.activeFocus && (root.editing)
             onActivated: root.deletePoint()
         }
 
         Shortcut {
             sequence: "Ctrl+Shift+Backspace"
             context: Qt.WindowShortcut
-            enabled: root.editing && root.hasPointText
+            enabled: !pointEditor.activeFocus && (root.editing && root.hasPointText)
             onActivated: root.armClearPoints()
         }
 
         Shortcut {
             sequence: "Ctrl+Down"
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.setShortWindow(true)
         }
 
         Shortcut {
             sequence: "Ctrl+Up"
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.setShortWindow(false)
         }
 
         Shortcut {
             sequence: "Ctrl+Shift+C"
             context: Qt.WindowShortcut
-            enabled: root.editing && root.hasPointText
+            enabled: !pointEditor.activeFocus && (root.editing && root.hasPointText)
             onActivated: root.copyForAgents()
         }
 
         Shortcut {
             sequences: ["Ctrl+=", "Ctrl++", "Ctrl+Shift+="]
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.zoom(1)
         }
 
         Shortcut {
             sequences: ["Ctrl+-", "Ctrl+_"]
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.zoom(-1)
         }
 
         Shortcut {
             sequence: "Ctrl+0"
             context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus
             onActivated: root.zoom(0)
         }
 
         Shortcut {
             sequence: "Escape"
             context: Qt.WindowShortcut
-            enabled: !padMenu.opened && !helpPopup.opened
+            enabled: !pointEditor.activeFocus && (!padMenu.opened && !helpPopup.opened)
             onActivated: root.browsing ? root.browseEscape() : root.hideScratchpad()
         }
 
@@ -940,6 +964,7 @@ Scope {
             anchors.fill: parent
             anchors.margins: 4
             spacing: 4
+            Window.onActiveChanged: if (Window.active) root.syncWindowSize()
             ColumnLayout {
                 visible: !root.browsing
                 Layout.fillWidth: true
@@ -959,53 +984,27 @@ Scope {
                     onTextEdited: root.updateTitle(text)
                     onAccepted: root.focusContent()
                 }
-                ScrollView {
-                    id: pointScroll
+                LivePoints {
+                    id: pointEditor
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
-                    contentWidth: availableWidth
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                    Column {
-                        width: pointScroll.availableWidth
-                        spacing: 4
-                        Repeater {
-                            id: pointRepeater
-                            model: points
-                            delegate: PointCard {
-                                required property int index
-                                required property string body
-                                width: parent.width
-                                colors: theme
-                                number: index + 1
-                                pointCount: points.count
-                                source: body
-                                showControls: root.pointControls && !root.zen
-                                onEdited: text => root.updatePoint(index, text)
-                                onFocused: root.activePoint = index
-                                onCaretMoved: Qt.callLater(root.ensureCursorVisible)
-                                onRemoveRequested: root.removePoint(index)
-                                onMoveRequested: offset => root.movePoint(index, offset)
-                            }
-                        }
-                        PointButton {
-                            colors: theme
-                            anchors.right: parent.right
-                            visible: root.pointControls && !root.zen
-                            text: "+"
-                            Accessible.name: "Add point"
-                            enabled: root.ready && root.activeIndex >= 0
-                            onClicked: root.addPoint()
-                        }
-                        Label {
-                            width: parent.width
-                            visible: root.activeIndex < 0
-                            text: "Ctrl+N for a new scratchpad"
-                            color: theme.muted
-                            font.pixelSize: theme.px(13)
-                            wrapMode: Text.Wrap
-                        }
+                    colors: theme
+                    entries: {
+                        root.pointsRevision;
+                        const entries = [];
+                        for (let i = 0; i < points.count; i++)
+                            entries.push({ id: points.get(i).key, text: points.get(i).body });
+                        return entries;
                     }
+                    shortcuts: Keybinds.entries
+                    documentId: root.documentRevision
+                    currentPoint: root.activePoint
+                    showControls: root.pointControls && !root.zen
+                    onPointEdited: (index, text) => root.updatePoint(index, text)
+                    onPointFocused: index => root.activePoint = index
+                    onActionRequested: action => root.runBinding(action)
+                    onRemoveRequested: index => root.removePoint(index)
+                    onMoveRequested: (index, offset) => root.movePoint(index, offset)
                 }
                 RowLayout {
                     Layout.fillWidth: true

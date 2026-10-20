@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Omarchy runs this after system package updates when it is linked into
+# ~/.config/omarchy/hooks/post-update.d/. An update can replace Qt under the
+# running scratchpad, which then lazy-loads new libraries into old code (the
+# reason Omarchy restarts its own shell). Restart it hidden, rebuilding the
+# editor module for the new Qt first.
+repo_dir="$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")"
+# Spawn from Hyprland so the shell gets the session's environment, not the
+# update terminal's. Outside a session, restart directly.
+hyprctl dispatch "hl.dsp.exec_cmd(\"$repo_dir/toggle restart\")" >/dev/null 2>&1 || "$repo_dir/toggle" restart

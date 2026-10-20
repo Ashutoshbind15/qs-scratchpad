@@ -34,13 +34,15 @@ try:
         for pattern in ("*.qml", "*.js"):
             for source in repo.glob(pattern):
                 shutil.copy(source, temp)
+        for name in ("editor", "node_modules"):
+            (temp / name).symlink_to(repo / name, target_is_directory=True)
         (temp / "shell.qml").write_text(args.shell.read_text())
         store = temp / "notes.json"
         store.write_text(json.dumps({"version": 3, "activeIndex": 0, "pads": [
             {"name": "Global", "points": ["Original point"], "global": True, "pinned": True}
         ]}))
         env = {**os.environ, "QT_QPA_PLATFORM": "wayland", "SCRATCHPAD_FILE": str(store),
-               "SCRATCHPAD_PREWARM": "1"}
+               "SCRATCHPAD_PREWARM": "1", "QML_IMPORT_PATH": str(repo)}
         process = subprocess.Popen(["quickshell", "-p", str(temp), "--no-color"], env=env,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 

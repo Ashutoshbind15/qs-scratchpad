@@ -11,13 +11,15 @@ repo = Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix="scratchpad-startup-") as folder:
     temp = Path(folder)
     shutil.copy(repo / "toggle", temp / "toggle")
+    (temp / "prepare-editor").write_text("#!/bin/sh\nexit 0\n")
+    (temp / "prepare-editor").chmod(0o755)
     helper = '''#!/usr/bin/env python3
 import json, os, sys, time
 from pathlib import Path
 name = Path(sys.argv[0]).name
 with open(os.environ["CALL_LOG"], "a") as log:
     log.write(json.dumps([name, *sys.argv[1:], os.environ.get("SCRATCHPAD_PREWARM", "")]) + "\\n")
-if name == "pkill":
+if name in ("pkill", "pgrep"):
     sys.exit(1)
 if name == "hyprctl":
     print("1")
@@ -27,7 +29,7 @@ if name == "quickshell" and "ipc" in sys.argv:
     if os.environ["TEST_MODE"] != "running":
         sys.exit(1)
 '''
-    for name in ("quickshell", "hyprctl", "pkill"):
+    for name in ("quickshell", "hyprctl", "pkill", "pgrep"):
         path = temp / name
         path.write_text(helper)
         path.chmod(0o755)
@@ -58,6 +60,18 @@ if name == "quickshell" and "ipc" in sys.argv:
             assert calls[2] == ["quickshell", "-p", str(temp), "--no-duplicate", "--daemonize", ""], calls
             assert calls[3][0] == "hyprctl", calls
             assert elapsed < 1.5, elapsed
+    # After an update: stop the old instance, then preload a hidden fresh one,
+    # even when rebuilding the editor module fails.
+    (temp / "prepare-editor").write_text("#!/bin/sh\nexit 1\n")
+    log.write_text("")
+    env["TEST_MODE"] = "absent"
+    result = subprocess.run([str(temp / "toggle"), "restart"], env=env, check=True, timeout=3,
+                            capture_output=True, text=True)
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [call[0] for call in calls[:2]] == ["pkill", "pgrep"], calls
+    assert calls[2][5:7] == ["scratchpad", "ping"], calls
+    assert calls[-1] == ["quickshell", "-p", str(temp), "--no-duplicate", "--daemonize", "1"], calls
+    assert "build failed" in result.stderr, result.stderr
     store = json.loads((temp / "data/quickshell-scratchpad/scratchpads.json").read_text())
     assert store["version"] == 1 and len(store["pads"]) == 1, store
-print("Hidden preload, existing instance reuse, cold startup and hung-IPC recovery passed")
+print("Hidden preload, existing instance reuse, cold startup, hung-IPC recovery and post-update restart passed")

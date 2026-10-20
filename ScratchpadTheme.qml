@@ -7,6 +7,7 @@ Scope {
     property var values: ({})
     readonly property string home: Quickshell.env("HOME")
     property bool legacyPath: false
+    property bool paletteMissing: false
     // Point text size in pixels; every other size scales with it.
     readonly property int defaultFontSize: 17
     readonly property int minFontSize: 10
@@ -28,13 +29,6 @@ Scope {
     readonly property color hover: blend(background, accent, 0.18)
     readonly property color danger: pick("red", pick("color1", "#f7768e"))
     readonly property color dangerBackground: blend(background, danger, 0.3)
-    readonly property var syntax: ({
-        keyword: pick("magenta", pick("color5", "#bb9af7")),
-        string: pick("green", pick("color2", "#9ece6a")),
-        number: pick("orange", pick("color3", "#e0af68")),
-        comment: String(muted),
-        literal: pick("cyan", pick("color6", "#7dcfff"))
-    })
 
     // Scales a size designed for the original 15 px point text.
     function px(size) { return Math.round(size * fontScale); }
@@ -62,12 +56,18 @@ Scope {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: theme.load(text())
-        onLoadFailed: {
-            theme.values = ({});
-            if (!theme.legacyPath && !Quickshell.env("SCRATCHPAD_THEME_FILE")) theme.legacyPath = true;
+        onLoaded: { theme.paletteMissing = false; theme.load(text()); }
+        onLoadFailed: theme.paletteMissing = true
+    }
+    // Theme switches can replace the entire directory, invalidating file
+    // watches, and briefly remove the file. A failed read keeps the current
+    // colors; the next poll tries the other location, so one miss never
+    // strands the scratchpad on the legacy path or the fallback palette.
+    Timer {
+        interval: 2000; running: true; repeat: true
+        onTriggered: {
+            if (theme.paletteMissing && !Quickshell.env("SCRATCHPAD_THEME_FILE")) theme.legacyPath = !theme.legacyPath;
+            else palette.reload();
         }
     }
-    // Theme switches can replace the entire directory, invalidating file watches.
-    Timer { interval: 2000; running: true; repeat: true; onTriggered: palette.reload() }
 }

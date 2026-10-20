@@ -35,11 +35,14 @@ using the Lua config.
 | Dependency | Used for | Arch package |
 | --- | --- | --- |
 | [Quickshell](https://quickshell.org) (0.3+) with Qt 6 Quick Controls | The window and UI | `quickshell` |
+| Qt 6 WebEngine and WebChannel | Embedded live Markdown editor | `qt6-webengine`, `qt6-webchannel` |
+| CMake, C++ compiler and Qt headers | Building the local Quickshell compatibility module | `cmake`, `base-devel`, `qt6-base`, `qt6-declarative` |
 | Hyprland with the Lua config, plus Omarchy | Shortcuts, window rule, show/hide | (comes with Omarchy) |
 | `wl-paste` | Reading your selection for **Super+A** | `wl-clipboard` |
 | `flock` | Making sure only one copy starts | `util-linux` |
 | Python 3 | Creating the notes file on first launch | `python` |
-| Node.js 18+ | Unit tests only | `nodejs` |
+| Node.js 18+ and npm | Installing the pinned editor assets; unit tests | `nodejs`, `npm` |
+| Lua 5.4+ | The Super+Arrow focus test only | `lua` |
 
 `timeout`, `pkill` and `hyprctl` come with a standard Omarchy install.
 
@@ -59,7 +62,22 @@ using the Lua config.
    git clone <repo-url> ~/projects/quickshell-scratchpad
    ```
 
-2. **Load it from your Hyprland config.** Add this line to the end of
+2. **Prepare the editor:**
+
+   ```bash
+   cd ~/projects/quickshell-scratchpad
+   ./prepare-editor
+   ```
+
+   This downloads the pinned [Vditor](https://github.com/Vanessa219/vditor)
+   assets and builds a small local Qt module. Subsequent launches work offline.
+   The launcher rebuilds the module when the installed Qt version changes.
+   It uses Qt's private application headers to supply the program name that
+   Quickshell (0.3.1 and 0.3.2) omits and Chromium requires; no system files
+   are patched. A module built for a different Qt version refuses to load
+   the editor and shows a notice instead of crashing.
+
+3. **Load it from your Hyprland config.** Add this line to the end of
    `~/.config/hypr/hyprland.lua`, using the absolute path to your clone:
 
    ```lua
@@ -70,16 +88,26 @@ using the Lua config.
    `omarchy.lua` works out the repo path from its own location, so nothing
    else needs editing.
 
-3. **Reload Hyprland** with `hyprctl reload`, or log out and back in. From now
+4. **Restart it after Omarchy updates.** Link the hook so `omarchy update`
+   restarts the scratchpad the way it restarts Omarchy's own shell:
+
+   ```bash
+   ln -s ~/projects/quickshell-scratchpad/post-update.hook \
+     ~/.config/omarchy/hooks/post-update.d/quickshell-scratchpad.hook
+   ```
+
+   See [Updates](#updates) for why this matters.
+
+5. **Reload Hyprland** with `hyprctl reload`, or log out and back in. From now
    on the scratchpad loads in the background when you log in.
 
-4. **Press Super+N.**
+6. **Press Super+N.**
 
 > [!NOTE]
 > The setup binds **Super+N** and **Super+A** and **replaces Omarchy's
 > Super+Arrow** focus bindings with versions that can also reach the floating
-> scratchpad. When the scratchpad isn't on the current workspace, Super+Arrow
-> works exactly as before. If you already use Super+N or Super+A for something
+> scratchpad. When the scratchpad isn't on screen, Super+Arrow works exactly
+> as before. If you already use Super+N or Super+A for something
 > else, change the `o.bind` lines near the bottom of `omarchy.lua`.
 
 ## Quick tour
@@ -161,25 +189,25 @@ indented under their number, so an agent reads each point as a separate item.
 
 ### Live Markdown points
 
-Points render automatically using Qt's built-in Markdown support: headings,
-lists, links, quotes, tables, task lists and fenced code. Click a point's text
-to edit its Markdown in place; when focus leaves it, the formatting returns.
-**Alt+Up** / **Alt+Down** opens the previous or next point for editing. There
-is no separate Preview mode or toggle, and nothing extra needs installing.
+Points use [Vditor's instant-rendering editor](https://github.com/Vanessa219/vditor).
+Formatting remains visible inside the point while you type. For example, a
+list stays formatted while you edit a table below it in the same point.
+Vditor handles the Markdown syntax, tables, input rules, selection and undo.
+There is no separate Preview mode or toggle.
 
-- The point being edited shows its Markdown source; the other points stay
-  rendered. This trial renders between points, rather than formatting the
-  point while you type.
-- Links open in your default app. Drag to select rendered text, or click to
-  edit and select the original Markdown.
-- Code blocks get their own panel with a language label and a **Copy** button.
-  Long lines scroll sideways and keep their indentation.
-- Basic syntax highlighting for common languages: `js`, `ts`, `python`,
-  `bash`, `json`, `qml`, `rust`, `yaml`, `go`, `c`/`cpp`, `css` and others.
-  Anything else stays plain text.
-- Points are always saved as the original Markdown. Moving focus preserves
-  the editor's cursor and undo history and never rewrites the source.
-- Long points use the main notes scrollbar; code lines can scroll sideways.
+- Markdown markers appear around the block you're editing; surrounding
+  blocks stay formatted. Table cells can be edited directly.
+- **Alt+Up** / **Alt+Down** moves between points. The existing note and window
+  shortcuts continue to work from inside the editor.
+- Links open in your default app. Code blocks support syntax highlighting.
+  Clicking into a code block edits its source in the same box; highlighting
+  returns when the caret leaves. Inline code is a quiet chip in the theme's
+  code color.
+- Loading and focusing preserve the original Markdown. Editing uses Vditor's
+  Markdown serializer, which can normalize whitespace and table alignment.
+- Moving between points preserves each editor's selection and undo history.
+- All points share one embedded Qt WebEngine page. Editor assets are loaded
+  locally, and the page cannot fetch remote URLs.
 
 ### Layout and focus
 
@@ -191,8 +219,12 @@ is no separate Preview mode or toggle, and nothing extra needs installing.
 | Text size | **Ctrl+=** / **Ctrl+-** / **Ctrl+0** | Text from 10 to 32 px (17 by default). Buttons and rows scale with it |
 
 All four settings are remembered. The window floats on the right, 25% of the
-monitor wide and 75% tall. **Super+Arrow** moves focus into and out of it like
-any other window.
+monitor wide and 75% tall. Hyprland maps it tall, so when it gains focus at
+the wrong height for the saved mode it resizes itself. **Ctrl+Down** and
+**Ctrl+Up** always reapply their size. **Super+Arrow** moves focus into and out of it like
+any other window. It enters the scratchpad when the scratchpad is closer in that
+direction than the window Hyprland would pick, even if another monitor lies
+beyond it. Leaving goes to the nearest window on any monitor.
 
 ## Keyboard shortcuts
 
@@ -312,6 +344,29 @@ Showing and hiding is instant because no process starts:
 - If the window was closed through the window manager, the next shortcut
   remaps it without restarting. If the process exited or hung, the next
   shortcut restarts it.
+- The editor's Chromium renders in software (`--disable-gpu`). Its GPU
+  compositor would share Qt Quick's graphics context in this process, which
+  can leave the view black. If the editor's renderer process dies, the page
+  reloads with your current points.
+
+### Updates
+
+The scratchpad is a long-running Qt process, and the editor embeds QtWebEngine.
+Updates affect it in three ways:
+
+- **A running instance mixes old and new Qt.** pacman replaces Qt's files under
+  the running process, and anything loaded later comes from the new version.
+  Omarchy restarts its own shell after every update for this reason. Nothing
+  restarted the scratchpad, so it carried on with mismatched libraries.
+  `post-update.hook` runs `./toggle restart`, which stops the instance and
+  preloads a fresh, hidden one.
+- **The compatibility module is tied to one Qt minor version.** It reads a
+  private Qt struct, and a module built for an older Qt still loads. It now
+  checks the running version first, and `prepare-editor` rebuilds it, replacing
+  the file atomically so a running instance isn't affected.
+- **Arch can ship QtWebEngine behind the rest of Qt.** For example, QtWebEngine
+  6.11 runs on Qt 6.12, and QtWebEngine uses Qt's private APIs. That pairing
+  isn't supported upstream, and nothing in this repo can fix it.
 
 | File | Role |
 | --- | --- |
@@ -320,28 +375,40 @@ Showing and hiding is instant because no process starts:
 | `ScratchpadPoints.js` | Point helpers and the "copy for agents" format |
 | `NoteList.js` | Browser ordering, search and paging |
 | `Keybinds.js` | The shortcut list and its fuzzy search |
-| `MarkdownBlocks.js`, `SyntaxHighlight.js` | Preview code blocks and highlighting |
+| `LivePoints.qml`, `editor/` | Vditor live editor, Qt WebChannel bridge and point cards |
+| `native/`, `ScratchpadWeb/`, `prepare-editor` | Local Qt compatibility module and build setup |
 | `ScratchpadTheme.qml` | Omarchy palette loading and derived colors |
-| `PointCard.qml`, `MarkdownPreview.qml`, `ShortcutHelp.qml`, `Scratchpad*.qml`, `PointButton.qml` | UI components |
+| `ShortcutHelp.qml`, `Scratchpad*.qml`, `PointButton.qml` | Native UI components |
 | `omarchy.lua` | Hyprland bindings, window rule, show/hide and layout |
-| `toggle` | Show/hide, cold start, crash recovery, `prewarm` |
+| `toggle` | Show/hide, cold start, crash recovery, `prewarm`, `restart` |
+| `post-update.hook` | Omarchy post-update hook: restarts the scratchpad on the new Qt |
 | `capture` | Super+A: reads the selection and sends it to Global |
 
 ## Development
 
 ```bash
-# Markdown, highlighting, notes file, export, shortcut and note-list logic
+# Build the native module and install pinned editor assets
+./prepare-editor
+
+# Notes file, export, shortcut and note-list logic
 node --test tests/*.test.cjs
 
 # Offscreen QML run of editing, live rendering, browsing, pinning and saving
 # (needs Quickshell; uses a temporary copy and never touches your notes)
 python3 tests/qml-smoke.py
 
+# Real key input: edit a table while a list in the same point stays rendered,
+# then test undo, navigation, new points and an immediate note switch
+python3 tests/qml-live.py
+
 # Selection capture and the empty-selection fallback, without touching the clipboard
 python3 tests/capture.test.py
 
 # Hidden prewarm and startup recovery
 python3 tests/toggle.test.py
+
+# Super+Arrow into and out of the scratchpad across two monitors (Hyprland mocked)
+lua tests/focus.test.lua
 
 # Inside a running Hyprland session: real window mapping after compositor
 # closes. Briefly opens a test window with throwaway notes.
@@ -357,6 +424,7 @@ The offscreen tests don't cover the native close/reopen behavior. That's what
 | --- | --- |
 | Super+N does nothing | Check that `hyprland.lua` loads `omarchy.lua` with an absolute path, then run `hyprctl reload` |
 | The window never appears | Run `./toggle start` in a terminal to see the error |
+| Glitches after a system update, or "built for a different Qt version" | Run `./toggle restart`, then link `post-update.hook` (see Install) |
 | Super+A adds an empty point | The app doesn't support primary selection, or it took longer than 200 ms to answer. Paste the text instead |
 | "Unable to load notes" | The notes file is malformed and has been left untouched. Fix or move it, run `pkill -f 'quickshell -p .*quickshell-scratchpad'`, then press Super+N |
 | Colors don't match the theme | Check that `~/.local/state/omarchy/current/theme/colors.toml` exists, or set `SCRATCHPAD_THEME_FILE` |

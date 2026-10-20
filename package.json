@@ -1,0 +1,6 @@
+{
+  "name": "quickshell-scratchpad",
+  "private": true,
+  "scripts": { "prepare-editor": "./prepare-editor" },
+  "dependencies": { "vditor": "4.0.0" }
+}

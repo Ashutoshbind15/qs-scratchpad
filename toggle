@@ -1,21 +1,47 @@
 #!/usr/bin/env bash
 # `toggle` shows/hides the scratchpad (same as Super+N). `toggle start` is the
 # cold path Hyprland calls when no scratchpad window exists yet. `prewarm`
-# initializes Qt and loads notes at login without showing a window.
+# initializes Qt and loads notes at login without showing a window. `restart`
+# replaces a running instance with a hidden fresh one (after system updates).
 set -euo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ipc_timeout=0.75s
 
 mode="${1:-toggle}"
-if [[ "$mode" != start && "$mode" != prewarm ]]; then
+if [[ "$mode" != start && "$mode" != prewarm && "$mode" != restart ]]; then
     exec hyprctl eval 'quickshell_scratchpad_toggle()' >/dev/null
 fi
+
+export QML_IMPORT_PATH="$repo_dir${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}"
 
 export SCRATCHPAD_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/quickshell-scratchpad/scratchpads.json"
 mkdir -p -- "$(dirname -- "$SCRATCHPAD_FILE")"
 chmod 700 -- "$(dirname -- "$SCRATCHPAD_FILE")"
 exec 9>"${XDG_RUNTIME_DIR:-/tmp}/quickshell-scratchpad-${UID}.lock"
 flock -w 5 9 || { echo "Scratchpad startup is already in progress" >&2; exit 1; }
+# Chromium children start before Quickshell daemonizes. A file keeps them from
+# inheriting a caller's output pipe and holding capture/launcher clients open.
+launch_shell() {
+    local startup_log
+    startup_log="$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/quickshell-scratchpad-startup.XXXXXX")"
+    if quickshell -p "$repo_dir" --no-duplicate --daemonize </dev/null >"$startup_log" 2>&1 9>&-; then
+        rm -f -- "$startup_log"
+    else
+        cat -- "$startup_log" >&2
+        rm -f -- "$startup_log"
+        return 1
+    fi
+}
+# A failed build keeps the previous module; the editor reports when that
+# module no longer matches Qt instead of the launch failing outright.
+prepare_editor() {
+    "$repo_dir/prepare-editor" >&2 || echo "Scratchpad editor build failed; launching anyway" >&2
+}
+stop_shell() {
+    if pkill -f "^quickshell( -n)? -p $repo_dir( |$)"; then
+        sleep 0.1
+    fi
+}
 # Preserve the original text file while migrating it into the first scratchpad.
 if [[ ! -e "$SCRATCHPAD_FILE" ]]; then
     python3 - <<'PYTHON'
@@ -29,13 +55,25 @@ with open(path, "x", opener=lambda name, flags: os.open(name, flags, 0o600)) as 
 PYTHON
 fi
 
+# An update can replace Qt under a running instance, which then lazy-loads new
+# files into old code. Omarchy restarts its own shell for the same reason.
+if [[ "$mode" == restart ]]; then
+    for ((attempt = 0; attempt < 50; attempt++)); do
+        stop_shell
+        pgrep -f "^quickshell( -n)? -p $repo_dir( |$)" >/dev/null || break
+    done
+    mode=prewarm
+fi
+
 if [[ "$mode" == prewarm ]]; then
     # Never reveal an existing window or change focus during login/reloads.
     if timeout "$ipc_timeout" quickshell ipc -p "$repo_dir" call scratchpad ping >/dev/null 2>&1; then
         exit 0
     fi
     export SCRATCHPAD_PREWARM=1
-    exec quickshell -p "$repo_dir" --no-duplicate --daemonize 9>&-
+    prepare_editor
+    launch_shell
+    exit 0
 fi
 
 window_mapped() {
@@ -55,8 +93,7 @@ if timeout "$ipc_timeout" quickshell ipc -p "$repo_dir" call scratchpad reveal >
 fi
 # A hung instance can also stop answering IPC entirely. --no-duplicate alone
 # would keep that process alive and make every subsequent shortcut fail again.
-if pkill -f "^quickshell( -n)? -p $repo_dir( |$)"; then
-    sleep 0.1
-fi
-quickshell -p "$repo_dir" --no-duplicate --daemonize 9>&-
+stop_shell
+prepare_editor
+launch_shell
 window_mapped || { echo "Scratchpad window did not map" >&2; exit 1; }

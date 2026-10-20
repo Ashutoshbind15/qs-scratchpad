@@ -1,0 +1,38 @@
+:root { color-scheme: dark; font-family: sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-size: var(--font-size, 17px); }
+.point { margin-bottom: 4px; padding: 4px; border: 1px solid var(--border); background: var(--surface); }
+.point:focus-within { border-color: var(--accent); }
+.controls { display: flex; justify-content: flex-end; gap: 2px; margin-bottom: 3px; }
+button { color: var(--muted); background: transparent; border: 1px solid var(--border); font: inherit; font-size: .8em; min-width: 24px; cursor: pointer; padding: 3px 6px; }
+button:hover { color: var(--foreground); border-color: var(--accent); }
+button:disabled { opacity: .4; cursor: default; }
+#add { float: right; }
+.no-controls .controls, .no-controls #add { display: none; }
+.vditor { border: 0; border-radius: 0; --panel-background-color: var(--surface); --textarea-background-color: var(--surface); --textarea-text-color: var(--foreground); --border-color: var(--border); --second-color: var(--muted); --toolbar-background-color: var(--surface); --hover-background-color: var(--code); }
+.vditor-toolbar, .vditor-resize { display: none !important; }
+.vditor-ir { padding: 0; }
+.vditor-ir pre.vditor-reset { padding: 2px !important; min-height: 64px; font-size: var(--font-size); line-height: 1.5; color: var(--foreground); background: var(--surface); caret-color: var(--foreground); }
+.vditor-reset { font-family: sans-serif; }
+.vditor-reset a { color: var(--accent); }
+.vditor-reset blockquote { color: var(--muted); border-color: var(--accent); }
+.vditor-reset table { display: block; max-width: 100%; overflow-x: auto; }
+.vditor-reset table td, .vditor-reset table th { border-color: var(--border); }
+.vditor-reset table tr { background: var(--surface); border-color: var(--border); }
+.vditor-reset table tr:nth-child(2n), .vditor-reset code, .vditor-reset pre { background: var(--code); }
+.vditor-reset .hljs { background: var(--code); }
+/* Vditor's dark theme paints unhighlighted code translucent blue, and loads
+   after this file, hence the id. Inline code reads as text in a quiet chip of
+   the code color instead. */
+#points .vditor-reset code:not(.hljs):not(.highlight-chroma) { background: var(--code); color: var(--foreground); }
+/* Editing a fenced block edits it in place: Vditor normally shows the source
+   above a second, rendered copy, and the two resize a frame apart. The source
+   takes the rendered block's box; highlighting returns when the caret leaves. */
+.vditor-ir__node--expand[data-type="code-block"] > .vditor-ir__preview { display: none; }
+.vditor-reset pre > code, .vditor-reset pre > code.hljs { padding: .5em .75em; border-radius: 0; }
+.vditor-ir__node--expand .vditor-ir__marker--pre code { color: var(--foreground); }
+.vditor-reset .vditor-ir__marker { color: var(--muted); }
+::selection { background: var(--selection); color: var(--selected-text); }
+#status { color: var(--muted); font-size: .8em; }
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-thumb { background: var(--border); }

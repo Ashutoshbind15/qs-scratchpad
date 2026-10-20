@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$repo_dir"
+if [[ ! -f node_modules/vditor/dist/index.min.js ]]; then
+  npm ci --ignore-scripts --no-audit --no-fund
+fi
+# The module reads a private Qt struct, so any Qt update needs a rebuild.
+qt_version="$(pkg-config --modversion Qt6Core)"
+build_key="$(cat native/CMakeLists.txt native/plugin.cpp | sha256sum) $qt_version"
+if [[ -f ScratchpadWeb/libscratchpadweb.so && -f .build/editor-key && "$(cat .build/editor-key)" == "$build_key" ]]; then
+  exit 0
+fi
+cmake -S native -B .build/native
+cmake --build .build/native --parallel 2
+# A running scratchpad has the old module mapped. Replace it with a rename;
+# overwriting it in place would crash that process.
+cp .build/native/libscratchpadweb.so ScratchpadWeb/.libscratchpadweb.so.new
+mv -f ScratchpadWeb/.libscratchpadweb.so.new ScratchpadWeb/libscratchpadweb.so
+printf '%s\n' "$build_key" > .build/editor-key
