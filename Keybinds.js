@@ -14,6 +14,7 @@ var entries = [
     { section: "Notes", action: "openGlobal", label: "Open Global", sequences: ["Ctrl+G"], keywords: "switch go captures" },
 
     { section: "Points", action: "addPoint", label: "New point", sequences: ["Ctrl+Shift+N", "Ctrl+Return"], keywords: "create add" },
+    { section: "Points", action: "addDiagram", label: "Add diagram", sequences: ["Ctrl+Shift+D"], keywords: "scribblesvg draw sketch shapes canvas" },
     { section: "Points", action: "deletePoint", label: "Delete point", sequences: ["Ctrl+Shift+W"], keywords: "remove clear" },
     { section: "Points", action: "clearPoints", label: "Clear all points (press twice)", sequences: ["Ctrl+Shift+Backspace"], keywords: "empty wipe reset remove every" },
     { section: "Points", action: "previousPoint", label: "Previous point", sequences: ["Alt+Up"], keywords: "focus go navigate" },

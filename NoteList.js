@@ -52,6 +52,7 @@ function snippet(text) {
     var lines = String(text || "").split("\n");
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim();
+        if (line === "```scribblesvg") return "Diagram";
         if (line) return line;
     }
     return "";

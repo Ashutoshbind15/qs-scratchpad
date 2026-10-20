@@ -45,4 +45,5 @@ test('scroll mode shows the loaded prefix, at least one page', () => {
 test('snippet is the first nonblank line', () => {
     assert.equal(list.snippet('\n  \n  first line \nsecond'), 'first line');
     assert.equal(list.snippet(''), '');
+    assert.equal(list.snippet('```scribblesvg\n{"version":1}\n```'), 'Diagram');
 });

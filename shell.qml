@@ -104,6 +104,13 @@ Scope {
         Qt.callLater(focusContent);
     }
 
+    function insertDiagram(text) {
+        if (!editing) return;
+        if (!isBlank(points.get(activePoint).body)) addPoint();
+        updatePoint(activePoint, text);
+        pointEditor.editDiagram();
+    }
+
     function globalIndex() {
         for (let i = 0; i < pads.count; i++) if (pads.get(i).global) return i;
         return -1;
@@ -405,6 +412,7 @@ Scope {
         case "zen": toggleZen(); break;
         case "pointControls": togglePointControls(); break;
         case "addPoint": addPoint(); break;
+        case "addDiagram": if (editing) pointEditor.addDiagram(); break;
         case "previousPoint": focusPoint(-1); break;
         case "nextPoint": focusPoint(1); break;
         case "movePointUp": reorderPoint(-1); break;
@@ -833,6 +841,13 @@ Scope {
         }
 
         Shortcut {
+            sequence: "Ctrl+Shift+D"
+            context: Qt.WindowShortcut
+            enabled: !pointEditor.activeFocus && root.editing
+            onActivated: pointEditor.addDiagram()
+        }
+
+        Shortcut {
             sequence: "Alt+Up"
             context: Qt.WindowShortcut
             enabled: !pointEditor.activeFocus && (root.editing && points.count > 1)
@@ -1005,6 +1020,7 @@ Scope {
                     onActionRequested: action => root.runBinding(action)
                     onRemoveRequested: index => root.removePoint(index)
                     onMoveRequested: (index, offset) => root.movePoint(index, offset)
+                    onDiagramInserted: text => root.insertDiagram(text)
                 }
                 RowLayout {
                     Layout.fillWidth: true

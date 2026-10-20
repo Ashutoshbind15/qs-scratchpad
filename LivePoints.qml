@@ -15,6 +15,7 @@ FocusScope {
     property bool loaded: false
     property bool focusPending: false
     property bool endPending: false
+    property bool editDiagramPending: false
     property int lastEditId: 0
     readonly property var browser: webLoader.item
     signal pointEdited(int index, string text)
@@ -22,6 +23,17 @@ FocusScope {
     signal actionRequested(string action)
     signal removeRequested(int index)
     signal moveRequested(int index, int offset)
+    signal diagramInserted(string text)
+
+    function addDiagram() {
+        if (!loaded) return;
+        webLoader.forceActiveFocus();
+        browser.runJavaScript("window.scratchpad.addDiagram()");
+    }
+    function editDiagram() {
+        editDiagramPending = true;
+        focusContent();
+    }
 
     function focusContent() {
         focusPending = true;
@@ -39,7 +51,7 @@ FocusScope {
         if (!loaded) return;
         bridge.stateChanged(JSON.stringify({
             documentId, entries, currentPoint, showControls, shortcuts, lastEditId,
-            focus: focusPending, end: endPending,
+            focus: focusPending, end: endPending, editDiagram: editDiagramPending,
             palette: {
                 background: String(colors.background), surface: String(colors.surface),
                 foreground: String(colors.foreground), accent: String(colors.accent),
@@ -50,10 +62,11 @@ FocusScope {
         }));
         focusPending = false;
         endPending = false;
+        editDiagramPending = false;
     }
     onEntriesChanged: sync.restart()
     onCurrentPointChanged: sync.restart()
-    onDocumentIdChanged: { lastEditId = 0; sync.restart(); }
+    onDocumentIdChanged: { lastEditId = 0; editDiagramPending = false; sync.restart(); }
     onShowControlsChanged: sync.restart()
     Connections {
         target: panel.colors
@@ -89,6 +102,7 @@ FocusScope {
             case "action": panel.actionRequested(message.action); break;
             case "remove": panel.removeRequested(index); break;
             case "move": panel.moveRequested(index, message.offset); break;
+            case "insertDiagram": panel.diagramInserted(message.text); break;
             case "link":
                 if (/^(https?:|mailto:)/i.test(message.url)) Qt.openUrlExternally(message.url);
                 break;

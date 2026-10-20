@@ -1,6 +1,14 @@
 {
   "name": "quickshell-scratchpad",
   "private": true,
-  "scripts": { "prepare-editor": "./prepare-editor" },
-  "dependencies": { "vditor": "4.0.0" }
+  "scripts": {
+    "prepare-editor": "./prepare-editor"
+  },
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "roughjs": "4.6.6",
+    "vditor": "4.0.0"
+  }
 }

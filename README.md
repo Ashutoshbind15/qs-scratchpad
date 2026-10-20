@@ -42,6 +42,7 @@ using the Lua config.
 | `flock` | Making sure only one copy starts | `util-linux` |
 | Python 3 | Creating the notes file on first launch | `python` |
 | Node.js 18+ and npm | Installing the pinned editor assets; unit tests | `nodejs`, `npm` |
+| A local [ScribbleSVG](https://github.com/Ashutoshbind15/ScribbleSVG) checkout | Building the offline diagram editor | Clone into `~/ScribbleSVG`, or set the path below |
 | Lua 5.4+ | The Super+Arrow focus test only | `lua` |
 
 `timeout`, `pkill` and `hyprctl` come with a standard Omarchy install.
@@ -53,6 +54,7 @@ using the Lua config.
 | `XDG_DATA_HOME` | Where the notes are stored (default `~/.local/share`) |
 | `XDG_RUNTIME_DIR` | Where the startup lock file goes (default `/tmp`) |
 | `SCRATCHPAD_THEME_FILE` | Use a different `colors.toml` instead of the active Omarchy theme |
+| `SCRIBBLESVG_LOCAL_PATH` | ScribbleSVG source checkout to bundle during `./prepare-editor` (defaults to `~/ScribbleSVG`; an explicit path is remembered locally) |
 
 ## Install
 
@@ -62,7 +64,14 @@ using the Lua config.
    git clone <repo-url> ~/projects/quickshell-scratchpad
    ```
 
-2. **Prepare the editor:**
+2. **Prepare the editors.** If you don't already have a ScribbleSVG checkout,
+   clone it first:
+
+   ```bash
+   git clone https://github.com/Ashutoshbind15/ScribbleSVG.git ~/ScribbleSVG
+   ```
+
+   Then build the scratchpad's local assets:
 
    ```bash
    cd ~/projects/quickshell-scratchpad
@@ -70,7 +79,13 @@ using the Lua config.
    ```
 
    This downloads the pinned [Vditor](https://github.com/Vanessa219/vditor)
-   assets and builds a small local Qt module. Subsequent launches work offline.
+   assets, bundles the diagram editor directly from your ScribbleSVG source
+   (including local edits), and builds a small local Qt module. Dependencies
+   are installed in this repo; the ScribbleSVG checkout is only read.
+   Subsequent launches work offline, with no server or account needed.
+   For a checkout elsewhere, use
+   `SCRIBBLESVG_LOCAL_PATH=/path/to/ScribbleSVG ./prepare-editor` once.
+   That path is remembered in `.build/scribblesvg-path` for desktop launches.
    The launcher rebuilds the module when the installed Qt version changes.
    It uses Qt's private application headers to supply the program name that
    Quickshell (0.3.1 and 0.3.2) omits and Chromium requires; no system files
@@ -118,6 +133,7 @@ using the Lua config.
 | Send the selected text from any app to **Global** | **Super+A** |
 | New note | **Ctrl+N** |
 | New point in this note | **Ctrl+Shift+N** or **Ctrl+Enter** |
+| Draw a diagram | **Ctrl+Shift+D** or **Add diagram** below the points |
 | Browse and search notes | **Ctrl+B** |
 | Copy every point as a numbered list | **Ctrl+Shift+C** |
 | See every shortcut | **F1** or **Ctrl+/** |
@@ -209,6 +225,33 @@ There is no separate Preview mode or toggle.
 - All points share one embedded Qt WebEngine page. Editor assets are loaded
   locally, and the page cannot fetch remote URLs.
 
+### Local diagrams
+
+Click **Add diagram** below the points, or press **Ctrl+Shift+D** (also
+available through **F1**). The current empty point is reused; otherwise a
+new diagram point is appended.
+
+- Draw shapes, arrows, lines, text, and freehand strokes with your local
+  ScribbleSVG editor. Changes save automatically.
+- Click **Done** or press **Ctrl+Enter** to return to your notes. Click the
+  diagram preview to edit it again. **Escape** belongs to the drawing editor
+  while it is open.
+- Diagram points can sit alongside Markdown points and use the same move
+  and remove controls. Their previews follow the scratchpad theme; the
+  drawing canvas uses ScribbleSVG's white surface.
+- The complete editable document is stored inside a `scribblesvg` Markdown
+  code fence in the notes file. **Copy** includes that source in the numbered
+  list, so an agent gets the diagram structure and labels. There are no
+  separate image files to keep track of.
+- You can also paste a complete `scribblesvg` fence containing a
+  `DiagramDocument` JSON object into its own point. Invalid documents stay
+  editable as Markdown, with an error message.
+
+After editing or updating your ScribbleSVG checkout, run `./toggle restart`
+to rebuild the bundle and load it. The build checks source contents and
+skips unchanged bundles. The last successful bundle can still run if the
+source checkout is temporarily unavailable.
+
 ### Layout and focus
 
 | Mode | Shortcut | What it does |
@@ -246,6 +289,7 @@ fuzzy-filter by action, key or initials (`ctrl shift c`, `mpd`), then press
 | | Pin or unpin note | Ctrl+P |
 | | Open Global | Ctrl+G |
 | **Points** | New point | Ctrl+Shift+N, Ctrl+Enter |
+| | Add diagram | Ctrl+Shift+D |
 | | Delete point | Ctrl+Shift+W |
 | | Clear all points (press twice) | Ctrl+Shift+Backspace |
 | | Previous / next point | Alt+Up / Alt+Down |
@@ -376,6 +420,7 @@ Updates affect it in three ways:
 | `NoteList.js` | Browser ordering, search and paging |
 | `Keybinds.js` | The shortcut list and its fuzzy search |
 | `LivePoints.qml`, `editor/` | Vditor live editor, Qt WebChannel bridge and point cards |
+| `build-diagrams.mjs`, `editor/diagrams.jsx` | Bundle local ScribbleSVG and connect diagram previews, drawing and autosave |
 | `native/`, `ScratchpadWeb/`, `prepare-editor` | Local Qt compatibility module and build setup |
 | `ScratchpadTheme.qml` | Omarchy palette loading and derived colors |
 | `ShortcutHelp.qml`, `Scratchpad*.qml`, `PointButton.qml` | Native UI components |
@@ -400,6 +445,9 @@ python3 tests/qml-smoke.py
 # Real key input: edit a table while a list in the same point stays rendered,
 # then test undo, navigation, new points and an immediate note switch
 python3 tests/qml-live.py
+
+# Real diagram drawing, undo/redo, autosave, label editing, reordering and reload
+python3 tests/qml-diagrams.py
 
 # Selection capture and the empty-selection fallback, without touching the clipboard
 python3 tests/capture.test.py
@@ -428,3 +476,4 @@ The offscreen tests don't cover the native close/reopen behavior. That's what
 | Super+A adds an empty point | The app doesn't support primary selection, or it took longer than 200 ms to answer. Paste the text instead |
 | "Unable to load notes" | The notes file is malformed and has been left untouched. Fix or move it, run `pkill -f 'quickshell -p .*quickshell-scratchpad'`, then press Super+N |
 | Colors don't match the theme | Check that `~/.local/state/omarchy/current/theme/colors.toml` exists, or set `SCRATCHPAD_THEME_FILE` |
+| Diagrams are not built, or ScribbleSVG source is missing | Clone ScribbleSVG into `~/ScribbleSVG`, or set `SCRIBBLESVG_LOCAL_PATH` when running `./prepare-editor`, then run `./toggle restart` |

@@ -2,3 +2,4 @@ node_modules/
 .build/
 ScratchpadWeb/*.so
 ScratchpadWeb/.*.new
+editor/generated/

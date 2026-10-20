@@ -2,9 +2,14 @@
 set -euo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$repo_dir"
-if [[ ! -f node_modules/vditor/dist/index.min.js ]]; then
+dependency_key="$(sha256sum package-lock.json)"
+if [[ ! -f node_modules/vditor/dist/index.min.js || ! -f node_modules/esbuild/bin/esbuild \
+      || ! -f .build/dependency-key || "$(cat .build/dependency-key)" != "$dependency_key" ]]; then
   npm ci --ignore-scripts --no-audit --no-fund
+  mkdir -p .build
+  printf '%s\n' "$dependency_key" > .build/dependency-key
 fi
+node build-diagrams.mjs
 # The module reads a private Qt struct, so any Qt update needs a rebuild.
 qt_version="$(pkg-config --modversion Qt6Core)"
 build_key="$(cat native/CMakeLists.txt native/plugin.cpp | sha256sum) $qt_version"

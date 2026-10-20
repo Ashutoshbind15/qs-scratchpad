@@ -4,10 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="stylesheet" href="../node_modules/vditor/dist/index.css">
+  <link rel="stylesheet" href="generated/diagrams.css">
   <link rel="stylesheet" href="style.css">
   <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
   <script src="../node_modules/vditor/dist/index.min.js"></script>
+  <script defer src="generated/diagrams.js"></script>
   <script defer src="editor.js"></script>
 </head>
-<body><main id="points" aria-label="Note points"></main><button id="add" aria-label="Add point">+</button><p id="status" role="status">Loading editor…</p></body>
+<body>
+  <main id="points" aria-label="Note points"></main>
+  <div id="add-controls">
+    <button id="add-diagram" title="Add diagram (Ctrl+Shift+D)">Add diagram</button>
+    <button id="add" aria-label="Add point">+</button>
+  </div>
+  <p id="status" role="status">Loading editor…</p>
+</body>
 </html>

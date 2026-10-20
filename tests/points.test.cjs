@@ -26,3 +26,12 @@ test('title follows the first nonblank point', () => {
     assert.equal(points.title(['', '  My title\nbody', 'Other']), 'My title');
     assert.equal(points.title(['', ' ']), 'Untitled');
 });
+test('agent export preserves an editable diagram beside Markdown', () => {
+    const document = { version: 1, elements: [
+        { id: 'label', seed: 1, type: 'text', x: 0, y: 0, text: 'Step 1\n```quoted```' }
+    ], viewport: { x: 0, y: 0, zoom: 1 } };
+    const source = '```scribblesvg\n' + JSON.stringify(document) + '\n```';
+    const exported = points.forAgents(['Explain this flow.', source]);
+    assert.ok(exported.startsWith('1. Explain this flow.\n\n2. ```scribblesvg\n'));
+    assert.deepEqual(JSON.parse(exported.split('\n')[3].trim()), document);
+});

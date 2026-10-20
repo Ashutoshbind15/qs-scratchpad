@@ -11,6 +11,7 @@ let pending;
 let applying = false;
 let darkTheme = true;
 let editId = 0;
+let diagramSession;
 
 function send(type, extra = {}) {
   bridge.receive(JSON.stringify({ type, documentId, ...extra }));
@@ -27,6 +28,34 @@ function flush() {
       send('input', { id: point.id, text, editId: point.editId });
     }
   }
+}
+
+function openDiagram(point) {
+  if (!point?.ready || point.kind !== 'diagram') return;
+  diagramSession?.close();
+  flush();
+  send('focus', { id: point.id });
+  diagramSession = window.scratchpadDiagrams.edit(point.source, source => {
+    if (point.documentId !== documentId || !points.includes(point)) return;
+    point.editor.setValue(source);
+    point.dirty = true;
+    flush();
+  }, () => {
+    diagramSession = null;
+    if (point.documentId === documentId && point.ready) point.editor.focus();
+  });
+  diagramSession.point = point;
+}
+
+function addDiagram() {
+  if (diagramSession) return;
+  if (!window.scratchpadDiagrams) {
+    status.hidden = false;
+    status.textContent = 'Diagrams are not built yet. Run ./prepare-editor with your ScribbleSVG checkout.';
+    return;
+  }
+  flush();
+  send('insertDiagram', { text: window.scratchpadDiagrams.empty });
 }
 
 function createPoint(source, index, id) {
@@ -51,6 +80,22 @@ function createPoint(source, index, id) {
   element.append(controls, content);
   host.append(element);
   const point = { id, source, index, element, documentId, editId: 0, ready: false, dirty: false, suppress: false };
+  const diagram = window.scratchpadDiagrams?.read(source);
+  if (diagram?.document) {
+    point.kind = 'diagram';
+    point.editor = window.scratchpadDiagrams.preview(content, source,
+      () => openDiagram(point), () => send('focus', { id: point.id }));
+    point.ready = true;
+    point.promise = Promise.resolve(point);
+    return point;
+  }
+  point.kind = 'markdown';
+  if (diagram?.error) {
+    const notice = document.createElement('p');
+    notice.className = 'diagram-error';
+    notice.textContent = diagram.error + ' Edit the source below to repair it.';
+    element.insertBefore(notice, content);
+  }
   point.promise = new Promise(resolve => {
     point.editor = new Vditor(content, {
       cdn, mode: 'ir', lang: 'en_US', value: source, theme: darkTheme ? 'dark' : 'classic',
@@ -84,7 +129,10 @@ async function applyState(next) {
     document.documentElement.style.setProperty(`--${css}`, key === 'fontSize' ? `${value}px` : value);
   }
   document.body.classList.toggle('no-controls', !next.showControls);
+  if (diagramSession && !next.entries.some(entry => entry.id === diagramSession.point.id))
+    diagramSession.close();
   if (documentId !== next.documentId) {
+    diagramSession?.close();
     for (const point of points) { point.ready = false; point.editor.destroy(); }
     host.replaceChildren();
     points = [];
@@ -98,6 +146,15 @@ async function applyState(next) {
   for (let index = 0; index < next.entries.length; index++) {
     const { id, text: source } = next.entries[index];
     let point = [...unused].find(item => item.id === id);
+    // A blank Markdown point can become a diagram without changing its ID.
+    const kind = window.scratchpadDiagrams?.read(source)?.document ? 'diagram' : 'markdown';
+    if (point && point.kind !== kind && next.lastEditId >= point.editId) {
+      unused.delete(point);
+      point.ready = false;
+      point.editor.destroy();
+      point.element.remove();
+      point = null;
+    }
     if (point) {
       unused.delete(point);
       if (point.source !== source && next.lastEditId >= point.editId) {
@@ -122,7 +179,7 @@ async function applyState(next) {
   await Promise.all(points.map(point => point.promise));
   for (const point of points) {
     const theme = darkTheme ? 'dark' : 'classic';
-    if (point.theme !== theme) {
+    if (point.kind === 'markdown' && point.theme !== theme) {
       point.editor.setTheme(theme, darkTheme ? 'dark' : 'light', darkTheme ? 'github-dark' : 'github', `${cdn}/dist/css/content-theme`);
       point.theme = theme;
     }
@@ -130,8 +187,11 @@ async function applyState(next) {
     point.element.querySelector('[data-action="down"]').disabled = point.index === points.length - 1;
   }
   status.hidden = true;
-  if (next.focus) focusPoint(next.currentPoint);
-  if (next.end) window.scratchpad.focusEnd();
+  if (!diagramSession) {
+    if (next.focus) focusPoint(next.currentPoint);
+    if (next.end) window.scratchpad.focusEnd();
+  }
+  if (next.editDiagram) openDiagram(points[next.currentPoint]);
 }
 
 async function drain() {
@@ -158,6 +218,7 @@ function focusPoint(index) {
 }
 
 function ensureCursorVisible() {
+  if (diagramSession) return;
   const selection = window.getSelection();
   if (!selection.rangeCount) return;
   const rect = selection.getRangeAt(0).getBoundingClientRect();
@@ -172,6 +233,15 @@ function chord(event) {
 }
 
 document.addEventListener('keydown', event => {
+  if (diagramSession) {
+    // Canvas keys must never delete notes, add points, or hide the window.
+    if (event.ctrlKey && event.key === 'Enter') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      diagramSession.close();
+    }
+    return;
+  }
   const sequence = chord(event);
   const binding = state?.shortcuts.find(item => item.section !== 'Anywhere' && item.sequences.includes(sequence));
   if (!binding) return;
@@ -196,9 +266,10 @@ document.addEventListener('click', event => {
 });
 document.addEventListener('selectionchange', () => requestAnimationFrame(ensureCursorVisible));
 document.querySelector('#add').addEventListener('click', () => { flush(); send('action', { action: 'addPoint' }); });
+document.querySelector('#add-diagram').addEventListener('click', addDiagram);
 
 window.scratchpad = {
-  focusPoint, ensureCursorVisible, flush,
+  focusPoint, ensureCursorVisible, flush, addDiagram,
   focusEnd() {
     focusPoint(state.currentPoint);
     const editable = points[state.currentPoint]?.element.querySelector('.vditor-ir [contenteditable="true"]');
